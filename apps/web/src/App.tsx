@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { Inbox as InboxIcon, PenLine } from "lucide-react";
+import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase";
 import { startOutboxWatcher } from "@/lib/outbox";
+import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
 import Inbox from "@/screens/Inbox";
 
 type Screen = "capture" | "inbox";
+
+const NAV = [
+  { id: "capture", label: "Capture", Icon: PenLine },
+  { id: "inbox", label: "Inbox", Icon: InboxIcon },
+] as const;
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -27,7 +35,13 @@ export default function App() {
     return startOutboxWatcher();
   }, [session]);
 
-  if (!ready) return <div className="grid h-full place-items-center text-muted">…</div>;
+  if (!ready) {
+    return (
+      <div className="grid h-full place-items-center">
+        <div className="bg-muted-foreground/40 size-2 animate-pulse rounded-full" />
+      </div>
+    );
+  }
   if (!session) return <SignIn />;
 
   return (
@@ -37,23 +51,30 @@ export default function App() {
       </main>
 
       <nav
-        className="flex shrink-0 border-t border-border bg-surface"
+        className="border-border/60 bg-background/80 flex shrink-0 border-t backdrop-blur-lg"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        {(["capture", "inbox"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setScreen(s)}
-            aria-current={screen === s ? "page" : undefined}
-            className={`flex-1 py-4 text-base font-medium capitalize transition-colors ${
-              screen === s ? "text-text" : "text-muted"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+        {NAV.map(({ id, label, Icon }) => {
+          const active = screen === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setScreen(id)}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 py-3 transition-colors",
+                active ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+              <span className="text-xs font-medium">{label}</span>
+            </button>
+          );
+        })}
       </nav>
+
+      <Toaster position="top-center" />
     </div>
   );
 }

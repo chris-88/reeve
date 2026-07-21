@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, CloudOff, Loader2, PenLine } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { subscribe, type PendingCapture } from "@/lib/outbox";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,16 @@ function relativeTime(iso: string): string {
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
+}
+
+/** "Today" / "Yesterday" / "Mon 14 Jul" — a capture log reads by day. */
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((midnight(new Date()) - midnight(d)) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" });
 }
 
 export default function Inbox() {
@@ -66,16 +77,35 @@ export default function Inbox() {
     [captures, filter],
   );
 
+  const grouped = useMemo(() => {
+    const out: { day: string; items: Capture[] }[] = [];
+    for (const c of visible) {
+      const day = dayLabel(c.created_at);
+      const last = out.at(-1);
+      if (last?.day === day) last.items.push(c);
+      else out.push({ day, items: [c] });
+    }
+    return out;
+  }, [visible]);
+
   const used = useMemo(() => {
-    const ids = new Set(captures.map((c) => c.corrected_area_id ?? c.area_id));
-    return areas.filter((a) => ids.has(a.id));
+    const counts = new Map<string, number>();
+    for (const c of captures) {
+      const id = c.corrected_area_id ?? c.area_id;
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return areas.filter((a) => counts.has(a.id)).map((a) => ({ ...a, count: counts.get(a.id)! }));
   }, [areas, captures]);
 
   return (
     <div className="flex h-full flex-col">
+      <header className="shrink-0 px-6 pt-8 pb-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+      </header>
+
       {used.length > 0 && (
-        <div className="flex shrink-0 gap-2 overflow-x-auto px-5 py-3">
-          <Chip active={filter === null} onClick={() => setFilter(null)} label="All" />
+        <div className="scrollbar-none flex shrink-0 gap-2 overflow-x-auto px-6 pb-3">
+          <Chip active={filter === null} onClick={() => setFilter(null)} label="All" count={captures.length} />
           {used.map((a) => (
             <Chip
               key={a.id}
@@ -83,62 +113,118 @@ export default function Inbox() {
               onClick={() => setFilter(filter === a.id ? null : a.id)}
               label={a.label}
               colour={a.colour}
+              count={a.count}
             />
           ))}
         </div>
       )}
 
-      <ul className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-        {pending.map((p) => (
-          <li key={p.id} className="border-b py-4 opacity-60">
-            <div className="flex items-baseline gap-3">
-              <span className="bg-border h-2.5 w-2.5 shrink-0 rounded-full" />
-              <p className="min-w-0 flex-1 truncate">{p.raw_text}</p>
-              <span className="text-muted-foreground shrink-0 text-sm">
-                {p.attempts > 0 ? "retrying" : "syncing"}
-              </span>
-            </div>
-          </li>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
+        {pending.length > 0 && (
+          <ul className="mb-2 space-y-1">
+            {pending.map((p) => (
+              <li
+                key={p.id}
+                className="border-border/50 bg-card/50 flex items-center gap-3 rounded-xl border border-dashed px-3.5 py-3"
+              >
+                {p.attempts > 0 ? (
+                  <CloudOff className="text-destructive size-4 shrink-0" aria-hidden />
+                ) : (
+                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
+                )}
+                <p className="text-muted-foreground min-w-0 flex-1 truncate text-sm">{p.raw_text}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {isLoading && (
+          <ul className="space-y-1">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="flex gap-3 py-4">
+                <Skeleton className="h-10 w-[3px] shrink-0 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-4/5" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {grouped.map(({ day, items }) => (
+          <section key={day}>
+            <h2 className="text-muted-foreground/70 sticky top-0 z-1 bg-background/90 py-2 text-xs font-semibold tracking-widest uppercase backdrop-blur">
+              {day}
+            </h2>
+            <ul>
+              {items.map((c) => {
+                const area = areaById.get(c.corrected_area_id ?? c.area_id ?? "");
+                const settled = c.status === "done";
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => setOpen(c)}
+                      className="hover:bg-card/60 -mx-2 flex w-[calc(100%+1rem)] gap-3.5 rounded-xl px-2 py-3.5 text-left transition-colors"
+                    >
+                      <span
+                        aria-hidden
+                        className="mt-0.5 w-[3px] shrink-0 self-stretch rounded-full"
+                        style={{ background: area?.colour ?? "var(--color-border)" }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {c.title ?? c.raw_text}
+                          </span>
+                          <span className="text-muted-foreground/70 shrink-0 text-xs tabular-nums">
+                            {relativeTime(c.created_at)}
+                          </span>
+                        </span>
+                        <span className="text-muted-foreground mt-1 block text-sm leading-snug">
+                          {c.status === "failed" ? (
+                            <span className="text-destructive inline-flex items-center gap-1.5">
+                              <AlertCircle className="size-3.5" aria-hidden />
+                              Couldn&rsquo;t file this. Tap to see why.
+                            </span>
+                          ) : !settled ? (
+                            <span className="inline-flex items-center gap-1.5 italic">
+                              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                              Filing…
+                            </span>
+                          ) : (
+                            <span className="line-clamp-2">{c.summary}</span>
+                          )}
+                        </span>
+                        {settled && area && (
+                          <span
+                            className="mt-1.5 inline-block text-[0.7rem] font-medium tracking-wide uppercase"
+                            style={{ color: area.colour }}
+                          >
+                            {area.label}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         ))}
 
-        {visible.map((c) => {
-          const area = areaById.get(c.corrected_area_id ?? c.area_id ?? "");
-          return (
-            <li key={c.id}>
-              <button
-                type="button"
-                onClick={() => setOpen(c)}
-                className="w-full border-b py-4 text-left"
-              >
-                <div className="flex items-baseline gap-3">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: area?.colour ?? "var(--color-border)" }}
-                  />
-                  <p className="min-w-0 flex-1 truncate font-medium">{c.title ?? c.raw_text}</p>
-                  <span className="text-muted-foreground shrink-0 text-sm">
-                    {relativeTime(c.created_at)}
-                  </span>
-                </div>
-                <div className="text-muted-foreground mt-1 pl-[1.4rem]">
-                  {c.status === "failed" ? (
-                    <span className="text-destructive">Triage failed. Tap to retry.</span>
-                  ) : c.status !== "done" ? (
-                    <span className="italic">Filing…</span>
-                  ) : (
-                    <span className="line-clamp-2">{c.summary}</span>
-                  )}
-                </div>
-              </button>
-            </li>
-          );
-        })}
-
         {!isLoading && visible.length === 0 && pending.length === 0 && (
-          <li className="text-muted-foreground py-16 text-center">Nothing captured yet.</li>
+          <div className="flex flex-col items-center gap-3 px-8 py-24 text-center">
+            <PenLine className="text-muted-foreground/40 size-8" strokeWidth={1.5} aria-hidden />
+            <p className="text-muted-foreground text-sm">
+              {filter
+                ? "Nothing filed here yet."
+                : "Nothing captured yet. Anything you write gets filed automatically."}
+            </p>
+          </div>
         )}
-      </ul>
+      </div>
 
       {open && (
         <CaptureDetail
@@ -157,28 +243,31 @@ function Chip({
   onClick,
   label,
   colour,
+  count,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   colour?: string;
+  count: number;
 }) {
   return (
-    <Button
+    <button
       type="button"
-      variant={active ? "secondary" : "outline"}
-      size="sm"
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "shrink-0 rounded-full px-4",
-        active ? "border-foreground" : "text-muted-foreground",
+        "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+        active
+          ? "border-foreground/30 bg-secondary text-foreground"
+          : "border-border/60 text-muted-foreground hover:text-foreground",
       )}
     >
       {colour && (
-        <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: colour }} />
+        <span aria-hidden className="size-2 rounded-full" style={{ background: colour }} />
       )}
       {label}
-    </Button>
+      <span className="text-muted-foreground/60 text-xs tabular-nums">{count}</span>
+    </button>
   );
 }
