@@ -100,7 +100,7 @@ export default function Inbox() {
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 px-6 pt-8 pb-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+        <h1 className="font-serif text-[1.75rem] leading-none font-normal">Inbox</h1>
       </header>
 
       {used.length > 0 && (
@@ -175,7 +175,7 @@ export default function Inbox() {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
-                          <span className="min-w-0 flex-1 truncate font-medium">
+                          <span className="min-w-0 flex-1 truncate font-serif text-[1.05rem] font-normal">
                             {c.title ?? c.raw_text}
                           </span>
                           <span className="text-muted-foreground/70 shrink-0 text-xs tabular-nums">

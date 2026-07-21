@@ -46,13 +46,12 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <main className="min-h-0 flex-1">
+      <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" ? <Capture /> : <Inbox />}
       </main>
 
       <nav
-        className="border-border/60 bg-background/80 flex shrink-0 border-t backdrop-blur-lg"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="border-border/60 bg-background/80 pb-safe flex shrink-0 border-t backdrop-blur-lg"
       >
         {NAV.map(({ id, label, Icon }) => {
           const active = screen === id;

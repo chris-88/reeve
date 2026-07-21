@@ -48,7 +48,7 @@ export default function Capture() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-baseline justify-between px-6 pt-8 pb-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{greeting()}</h1>
+        <h1 className="font-serif text-[1.75rem] leading-none font-normal">{greeting()}</h1>
         <span className="text-muted-foreground text-sm tabular-nums">
           {new Date().toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" })}
         </span>
@@ -74,8 +74,8 @@ export default function Capture() {
           aria-label="Capture a thought"
           className={cn(
             "h-full max-h-none min-h-0 resize-none border-0 bg-transparent p-0 shadow-none",
-            "!text-[1.6rem] leading-[1.45] font-light tracking-tight",
-            "placeholder:text-muted-foreground/50 placeholder:font-light",
+            "font-serif !text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em]",
+            "placeholder:text-muted-foreground/40 placeholder:font-light placeholder:italic",
             "focus-visible:ring-0 dark:bg-transparent",
           )}
         />
@@ -83,7 +83,6 @@ export default function Capture() {
 
       <div
         className="shrink-0 space-y-3 px-6 pt-3 pb-4"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
       >
         {pending.length > 0 && (
           <button
@@ -110,7 +109,7 @@ export default function Capture() {
           size="lg"
           onClick={() => void save()}
           disabled={!text.trim()}
-          className="h-16 w-full rounded-2xl text-base font-semibold transition-all disabled:opacity-25"
+          className="h-[3.75rem] w-full rounded-2xl text-[0.95rem] font-medium tracking-wide transition-all disabled:opacity-20"
         >
           <ArrowUp className="size-5" strokeWidth={2.5} aria-hidden />
           Capture

@@ -67,14 +67,14 @@ export default function CaptureDetail({
         className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 rounded-none p-0 sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl"
       >
         <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-4 text-left">
-          <DialogTitle className="pr-8 text-lg leading-snug font-semibold">
+          <DialogTitle className="pr-8 font-serif text-[1.35rem] leading-snug font-normal">
             {capture.title ?? "Capture"}
           </DialogTitle>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6">
           {capture.summary && (
-            <p className="text-[1.05rem] leading-relaxed">{capture.summary}</p>
+            <p className="font-serif text-[1.15rem] leading-relaxed">{capture.summary}</p>
           )}
 
           {capture.status === "failed" && (
@@ -161,7 +161,7 @@ export default function CaptureDetail({
             <h3 className="text-muted-foreground/70 text-[0.7rem] font-semibold tracking-widest uppercase">
               What you said
             </h3>
-            <p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
+            <p className="text-muted-foreground mt-2 font-serif leading-relaxed whitespace-pre-wrap">
               {capture.raw_text}
             </p>
           </div>

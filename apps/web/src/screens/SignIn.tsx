@@ -39,10 +39,10 @@ export default function SignIn() {
   }
 
   return (
-    <div className="grid h-full place-items-center px-6">
+    <div className="pt-safe pb-safe grid h-full place-items-center px-6">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-semibold tracking-tight">Reeve</h1>
-        <p className="text-muted-foreground mt-2">Capture a thought, and it gets filed.</p>
+        <h1 className="font-serif text-[2.75rem] leading-none font-normal">Reeve</h1>
+        <p className="text-muted-foreground mt-3 font-serif text-[1.05rem] italic">Capture a thought, and it gets filed.</p>
 
         <form onSubmit={submit} className="mt-8 space-y-3">
           <Input
@@ -68,7 +68,7 @@ export default function SignIn() {
             type="submit"
             size="lg"
             disabled={busy || !email.trim() || !password}
-            className="h-14 w-full rounded-xl text-base font-semibold"
+            className="h-14 w-full rounded-xl text-[0.95rem] font-medium tracking-wide"
           >
             {busy ? "Signing in…" : "Sign in"}
           </Button>

@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
 /*
- * Dark-first. Used in cars, on sites, one-handed, often in poor light — and at
- * a desk. High contrast and large touch targets are the whole brief.
+ * Self-hosted variable fonts. No CDN, no third-party request, no FOUT beyond
+ * the first load.
  *
- * The palette below is the source of truth. shadcn's semantic tokens are then
- * defined *in terms of it*, so shadcn components inherit this design direction
- * rather than dragging in their own default theme.
+ * Newsreader carries the writing surface and headings — a capture app should
+ * feel like somewhere you write, not somewhere you fill in a form. Geist takes
+ * the UI chrome, where neutrality and legibility matter more than character.
+ */
+@font-face {
+  font-family: "Newsreader";
+  src: url("./assets/fonts/Newsreader-latin.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-display: swap;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Geist";
+  src: url("./assets/fonts/Geist-latin.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-display: swap;
+  font-style: normal;
+}
+
+/*
+ * Dark-first. Used in cars, on sites, one-handed, often in poor light — and at
+ * a desk. High contrast and large touch targets are the brief.
+ *
+ * The greys carry a slight warm tint rather than sitting on pure blue-black:
+ * it reads as considered rather than default, and it stops the area colours
+ * looking stuck on.
+ *
+ * shadcn's semantic tokens are defined in terms of this palette, so components
+ * inherit the direction rather than dragging in their own theme.
  */
 @theme {
-  --color-bg: #0b0d10;
-  --color-surface: #14181d;
-  --color-surface-2: #1c2229;
-  --color-line: #2a323b;
-  --color-text: #eef2f6;
-  --color-muted: #9aa5b1;
-  --color-danger: #ef5a5a;
+  --color-bg: #0c0b0d;
+  --color-surface: #16151a;
+  --color-surface-2: #1e1d23;
+  --color-line: #2b2932;
+  --color-text: #f2f0ee;
+  --color-muted: #9b96a3;
+  --color-danger: #f2685f;
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
 
-  --radius: 0.75rem;
+  --radius: 0.875rem;
 
   /* shadcn tokens, mapped onto the palette above. */
   --color-background: var(--color-bg);
@@ -46,7 +72,21 @@
 /* Horizontal chip rails: scrollable, but no scrollbar furniture. */
 @utility scrollbar-none {
   scrollbar-width: none;
-  &::-webkit-scrollbar { display: none; }
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/*
+ * Safe areas. With viewport-fit=cover and a black-translucent status bar, iOS
+ * draws the web view *under* the Dynamic Island and the home indicator, so
+ * both insets have to be honoured explicitly or content sits beneath them.
+ */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 html,
@@ -56,10 +96,16 @@ body,
 }
 
 body {
-  background: var(--color-bg);
+  /* A very slight lift at the top keeps the screen from reading as flat black. */
+  background:
+    radial-gradient(120% 60% at 50% 0%, #14131a 0%, transparent 70%),
+    var(--color-bg);
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv01";
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* Stop iOS bouncing the whole page when the keyboard opens. */
   overscroll-behavior-y: none;
 }
