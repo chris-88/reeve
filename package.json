@@ -1,0 +1,23 @@
+{
+  "name": "reeve",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @reeve/web dev",
+    "build": "pnpm --filter @reeve/web build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:status": "node scripts/migrate.mjs --status",
+    "db:seed": "node scripts/seed-areas.mjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.110.7",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3",
+    "typescript": "^5.9.3"
+  }
+}

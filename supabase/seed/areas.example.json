@@ -1,0 +1,23 @@
+[
+  {
+    "id": "work",
+    "label": "Work",
+    "classifier_hint": "Describe, in one or two sentences, what belongs in this area. This text is fed verbatim to the triage model and is the single biggest lever on classification quality.",
+    "colour": "#3D9BE9",
+    "sort_order": 10
+  },
+  {
+    "id": "personal",
+    "label": "Personal",
+    "classifier_hint": "Personal life and admin: family, household, health, finances, travel, appointments, errands.",
+    "colour": "#E2B93B",
+    "sort_order": 20
+  },
+  {
+    "id": "unsorted",
+    "label": "Unsorted",
+    "classifier_hint": "Use when the capture does not clearly belong to any other area, or is too ambiguous to place confidently. Never force a guess — route here instead.",
+    "colour": "#5A6270",
+    "sort_order": 999
+  }
+]

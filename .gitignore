@@ -1,0 +1,24 @@
+node_modules/
+dist/
+build/
+.DS_Store
+*.log
+
+# Secrets — never commit. See .env.example for the shape.
+.env
+.env.local
+.env.*.local
+.supabase/
+
+# Build/test artefacts
+coverage/
+playwright-report/
+test-results/
+.vite/
+
+# Supabase CLI local state
+supabase/.temp/
+
+# Personal content. The shape is in the .example files.
+docs/spec.md
+supabase/seed/areas.json

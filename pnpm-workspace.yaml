@@ -1,0 +1,6 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  # esbuild's postinstall fetches its platform-specific binary. Required by Vite.
+  esbuild: true

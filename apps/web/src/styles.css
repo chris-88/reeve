@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/*
+ * Dark-first. Used in cars, on sites, one-handed, often in poor light — and at
+ * a desk. High contrast and large touch targets are the whole brief.
+ *
+ * The palette below is the source of truth. shadcn's semantic tokens are then
+ * defined *in terms of it*, so shadcn components inherit this design direction
+ * rather than dragging in their own default theme.
+ */
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #14181d;
+  --color-surface-2: #1c2229;
+  --color-line: #2a323b;
+  --color-text: #eef2f6;
+  --color-muted: #9aa5b1;
+  --color-danger: #ef5a5a;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  --radius: 0.75rem;
+
+  /* shadcn tokens, mapped onto the palette above. */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-text);
+  --color-primary: var(--color-text);
+  --color-primary-foreground: var(--color-bg);
+  --color-secondary: var(--color-surface-2);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted-foreground: var(--color-muted);
+  --color-accent: var(--color-surface-2);
+  --color-accent-foreground: var(--color-text);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: var(--color-text);
+  --color-border: var(--color-line);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-text);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* Stop iOS bouncing the whole page when the keyboard opens. */
+  overscroll-behavior-y: none;
+}
+
+/* iOS zooms the viewport when focusing an input below 16px. Never let it. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* Visible focus, always. Never remove it for aesthetics. */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
