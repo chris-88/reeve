@@ -4,68 +4,80 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 
 /**
- * Magic link rather than a password. Sessions persist and auto-refresh, so
- * this should be a once-ever screen on an installed home-screen app.
+ * Email and password.
+ *
+ * Magic links were the first attempt and are a bad fit here: Supabase's free
+ * tier allows two auth emails per hour, links are single-use and get burned by
+ * mail-client prefetching, and on iOS they open in Safari rather than the
+ * installed PWA, so the session lands in the wrong browser.
+ *
+ * A password with a persisted, auto-refreshing session means signing in once.
  */
 export default function SignIn() {
   const [email, setEmail] = useState("");
-  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setState("sending");
+    setBusy(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      password,
     });
     if (error) {
-      setError(error.message);
-      setState("error");
-    } else {
-      setState("sent");
+      setError(
+        error.message === "Invalid login credentials"
+          ? "That email and password don't match. Check and try again."
+          : error.message,
+      );
+      setBusy(false);
     }
+    // On success the auth listener in App swaps this screen out.
   }
 
   return (
     <div className="grid h-full place-items-center px-6">
       <div className="w-full max-w-sm">
         <h1 className="text-3xl font-semibold tracking-tight">Reeve</h1>
-        <p className="mt-2 text-muted-foreground">Capture a thought, and it gets filed.</p>
+        <p className="text-muted-foreground mt-2">Capture a thought, and it gets filed.</p>
 
-        {state === "sent" ? (
-          <p className="bg-card mt-8 rounded-xl border p-4 leading-relaxed">
-            Check <span className="font-medium">{email}</span> for a sign-in link. Open it on
-            this device.
-          </p>
-        ) : (
-          <form onSubmit={submit} className="mt-8 space-y-3">
-            <Input
-              type="email"
-              required
-              autoComplete="email"
-              inputMode="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-14 rounded-xl px-4"
-            />
-            <Button
-              type="submit"
-              size="lg"
-              disabled={state === "sending"}
-              className="h-14 w-full rounded-xl text-base font-semibold"
-            >
-              {state === "sending" ? "Sending…" : "Send sign-in link"}
-            </Button>
-            {error && (
-              <p role="alert" className="text-destructive">
-                {error} Tap to try again.
-              </p>
-            )}
-          </form>
-        )}
+        <form onSubmit={submit} className="mt-8 space-y-3">
+          <Input
+            type="email"
+            required
+            autoComplete="username"
+            inputMode="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="h-14 rounded-xl px-4"
+          />
+          <Input
+            type="password"
+            required
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="h-14 rounded-xl px-4"
+          />
+          <Button
+            type="submit"
+            size="lg"
+            disabled={busy || !email.trim() || !password}
+            className="h-14 w-full rounded-xl text-base font-semibold"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+          </Button>
+          {error && (
+            <p role="alert" className="text-destructive">
+              {error}
+            </p>
+          )}
+        </form>
       </div>
     </div>
   );
