@@ -5,9 +5,11 @@ import path from "node:path";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  // Served from app.chrisquinn.ie via GitHub Pages, so the app sits at the
-  // domain root rather than under a /repo-name/ path.
-  base: "/",
+  // Relative so the same build works both at the domain root
+  // (app.chrisquinn.ie) and under a subpath (chris-88.github.io/reeve/).
+  // Safe here because the app has no client-side routing — two screens,
+  // switched by state.
+  base: "./",
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   envDir: path.resolve(import.meta.dirname, "../.."),
 });
