@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, RotateCw } from "lucide-react";
 import type { Area, Capture, Entities } from "@reeve/shared";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/lib/supabase";
@@ -36,6 +37,7 @@ export default function CaptureDetail({
   onCorrected: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const current = capture.corrected_area_id ?? capture.area_id;
 
   /**
@@ -51,6 +53,23 @@ export default function CaptureDetail({
       .update({ corrected_area_id: areaId, corrected_at: new Date().toISOString() })
       .eq("id", capture.id);
     setSaving(false);
+    onCorrected();
+    onClose();
+  }
+
+  /**
+   * Exhausting the server's three attempts should not be terminal — the cause
+   * is usually a transient model outage. Resetting attempts puts the row back
+   * in front of the sweeper.
+   */
+  async function retry() {
+    setRetrying(true);
+    await supabase
+      .from("captures")
+      .update({ status: "queued", attempts: 0, error: null })
+      .eq("id", capture.id);
+    await supabase.functions.invoke("triage", { body: { capture_id: capture.id } });
+    setRetrying(false);
     onCorrected();
     onClose();
   }
@@ -80,12 +99,26 @@ export default function CaptureDetail({
           {capture.status === "failed" && (
             <div
               role="alert"
-              className="border-destructive/30 bg-destructive/5 text-destructive flex gap-3 rounded-xl border p-4 text-sm"
+              className="border-destructive/30 bg-destructive/5 space-y-3 rounded-xl border p-4 text-sm"
             >
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>
-                This couldn&rsquo;t be filed{capture.error ? `: ${capture.error}` : "."}
-              </span>
+              <div className="text-destructive flex gap-3">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>
+                  This couldn&rsquo;t be filed{capture.error ? `: ${capture.error}` : "."} Your
+                  text is safe.
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={retrying}
+                onClick={() => void retry()}
+                className="w-full"
+              >
+                <RotateCw className={cn("size-4", retrying && "animate-spin")} aria-hidden />
+                {retrying ? "Trying again…" : "Try filing it again"}
+              </Button>
             </div>
           )}
 

@@ -286,7 +286,7 @@ Replace at these exact sites — all become `text-muted-dim`:
 | `screens/Inbox.tsx` | 181 | `text-muted-foreground/70` (relative time) |
 | `screens/Inbox.tsx` | 270 | `text-muted-foreground/60` (chip count) |
 | `components/CaptureDetail.tsx` | 96, 114, 161 | `text-muted-foreground/70` (section headings) |
-| `screens/Capture.tsx` | 78 | `placeholder:text-muted-foreground/40` |
+| `screens/Capture.tsx` | 99 | `placeholder:text-muted-foreground/40` |
 
 Two sites are **excluded** — both are decorative, `aria-hidden`, and carry no
 information, so the text contrast rules do not apply:
@@ -321,15 +321,19 @@ that gets the app back to the brief.
 
 **Priority:** P1
 
-**File:** `apps/web/src/screens/Capture.tsx` lines 46, 116–120
+**File:** `apps/web/src/screens/Capture.tsx` lines 65, 137–141
 
-Remove the `words` calculation and the `{words} words` span inside the Capture
-button. Counting the words invites the user to *evaluate* the thought they have
-just had, which is precisely the friction the app exists to remove. The button
-reads `Capture` and nothing else.
+Remove the `const words = …` calculation and the `{words} words` span inside
+the Capture button. Counting the words invites the user to *evaluate* the
+thought they have just had, which is precisely the friction the app exists to
+remove. The button reads `Capture` and nothing else.
 
-**Acceptance.** The button's accessible name is exactly `Capture`. Note that
-`e2e/capture.spec.ts` matches on `/^Capture/` and will continue to pass.
+Keep the `saving` state and its `Saving…` label — that is honest feedback about
+an operation in progress, not decoration.
+
+**Acceptance.** The button's accessible name is `Capture` (or `Saving…` while a
+write is in flight). Note that `e2e/capture.spec.ts` matches on `/^Capture/`
+and will continue to pass.
 
 ---
 
@@ -337,14 +341,19 @@ reads `Capture` and nothing else.
 
 **Priority:** P1. Do UI-11 first or in the same change.
 
-**Files:** `apps/web/src/screens/Capture.tsx` line 41, `apps/web/src/App.tsx`
+**Files:** `apps/web/src/screens/Capture.tsx` line 52, `apps/web/src/App.tsx`
 line 76
 
 "Captured / Filing it now." is two lines of copy explaining something the
-cleared field has already communicated. Remove the `toast()` call.
+cleared field has already communicated. Remove the success `toast()` call only:
 
-Do not remove `<Toaster />` from `App.tsx` — keep the mount point, since error
-paths may still want it. Remove the import of `toast` from `Capture.tsx` only.
+```ts
+toast("Captured", { description: "Filing it now." });   // ← delete this line
+```
+
+**Keep the `toast.error("Couldn't save that", …)` call in the same function.**
+That one reports a genuine failure the user cannot otherwise see, and it is the
+reason the `toast` import and the `<Toaster />` mount in `App.tsx` both stay.
 
 This ticket depends on UI-11 (the departure animation) landing first or
 alongside, so that the capture still has a visible acknowledgement. If UI-11 is
@@ -360,7 +369,7 @@ animation from UI-11 plays.
 
 **Priority:** P1
 
-**File:** `apps/web/src/screens/Capture.tsx` line 112
+**File:** `apps/web/src/screens/Capture.tsx` line 133
 
 `disabled:opacity-20` leaves a large, dead grey slab at the bottom of an
 otherwise empty screen — the single heaviest element on the Capture view when
@@ -412,7 +421,8 @@ grid. Correcting an area writes the same two columns it does today.
 
 **Priority:** P1
 
-**File:** `apps/web/src/screens/Capture.tsx` lines 11–16, 51–54
+**File:** `apps/web/src/screens/Capture.tsx` lines 10–15 (`greeting()`), 69–74
+(the `<header>`)
 
 `greeting()` and `new Date()` are evaluated during render. An installed PWA
 lives in memory for days, so the header will show "Morning" at 9pm and
@@ -475,7 +485,11 @@ it go?"* physically instead of with a sentence of copy, and it pays off the
 Constraints:
 - The field must accept new input immediately. The animation is decoration over
   an operation that has already completed — never gate `enqueue()` on it.
-- The draft must already be cleared from `localStorage` before the animation
+- Start the animation only once `enqueue()` has resolved. `save()` deliberately
+  clears the field *after* the local write is durable, and the comment above it
+  explains why: clearing first loses the thought outright if the write rejects.
+  Do not reorder that to make the animation start sooner.
+- The draft must already be cleared via `clearDraft()` before the animation
   starts, so an eviction mid-animation cannot resurrect a captured thought.
 
 **Acceptance.** Text animates upward and out on save; the field is focused and
@@ -513,7 +527,7 @@ Small, independent, no ordering between them.
 |---|---|---|
 | UI-13 | `theme-color` is `#0B0D10` in both `index.html` and the manifest; the actual background is `#0c0b0d`. Different colours — a visible seam at the status bar in the installed PWA. Set both to `#0c0b0d`. | `index.html` line 11, `public/manifest.webmanifest` |
 | UI-14 | Sticky day header sits inside the `px-6` container while rows use `-mx-2 w-[calc(100%+1rem)]`, so rows scroll past it in an 8px sliver each side. Its `bg-background/90` also does not match the body's radial gradient, which is why the band reads as a visible lighter rectangle. Give the header the same negative margin and padding. | `screens/Inbox.tsx` line 157 |
-| UI-15 | `role="presentation"` on a div with an `onClick` handler is contradictory. Drop the role; the behaviour is a convenience for pointer users and the textarea remains reachable by keyboard. | `screens/Capture.tsx` line 64 |
+| UI-15 | ~~`role="presentation"` on a div with an `onClick` handler.~~ **Already fixed** after this review, in the commit that replaced the wrapper with a `<label>`. A wrapping label focuses the control natively and is strictly better than the handler it replaced. No work required — listed only so it is not re-reported. | `screens/Capture.tsx` line 80 |
 | UI-16 | `DialogContent` has no `DialogDescription`, so Radix logs an accessibility warning on every open. Pass `aria-describedby={undefined}` deliberately, or add a description. | `components/CaptureDetail.tsx` line 65 |
 | UI-17 | `<nav>` has no `aria-label`. Add one. | `App.tsx` line 53 |
 | UI-18 | Inbox titles `truncate` to a single line. Two lines is kinder for a capture log — `line-clamp-2`, matching the summary below it. | `screens/Inbox.tsx` line 178 |

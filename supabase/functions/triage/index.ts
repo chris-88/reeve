@@ -17,20 +17,32 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 // them from the preflight response makes the browser block the request outright
 // while server-side callers, which skip CORS entirely, keep working — so the
 // failure is invisible unless you test from a real browser.
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const ALLOWED_ORIGINS = new Set([
+  "https://app.chrisquinn.ie",
+  "http://localhost:5173",
+]);
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, "content-type": "application/json" },
-  });
+function cors(origin: string | null): Record<string, string> {
+  return {
+    // Echo the origin only when it is one of ours. The endpoint is auth-gated
+    // so "*" was low-risk, but there is no reason to offer it.
+    "Access-Control-Allow-Origin":
+      origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://app.chrisquinn.ie",
+    "Access-Control-Allow-Headers":
+      "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    Vary: "Origin",
+  };
+}
 
 Deno.serve(async (req) => {
+  const CORS = cors(req.headers.get("Origin"));
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...CORS, "content-type": "application/json" },
+    });
+
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
@@ -43,13 +55,19 @@ Deno.serve(async (req) => {
     return json({ error: "function is not configured" }, 500);
   }
 
-  // Identify the caller from their own JWT before touching anything.
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const caller = createClient(supabaseUrl, secretKey);
+  // One service-role client. RLS is bypassed, so every query below is
+  // explicitly scoped by user_id — the check is ours to enforce, not Postgres'.
+  const db = createClient(supabaseUrl, secretKey);
+
+  // Identify the caller from their own JWT before touching anything. The cron
+  // sweeper presents the service key itself, which resolves to no user; it is
+  // trusted because possessing that key already implies full access.
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const isService = token === secretKey;
   const {
     data: { user },
-  } = await caller.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
-  if (!user) return json({ error: "unauthorised" }, 401);
+  } = isService ? { data: { user: null } } : await db.auth.getUser(token);
+  if (!isService && !user) return json({ error: "unauthorised" }, 401);
 
   let captureId: string;
   try {
@@ -59,16 +77,9 @@ Deno.serve(async (req) => {
   }
   if (typeof captureId !== "string") return json({ error: "capture_id is required" }, 400);
 
-  // Service-role client for writes. RLS is bypassed, so every query below is
-  // explicitly scoped by user_id — the check is ours to enforce, not Postgres'.
-  const db = createClient(supabaseUrl, secretKey);
-
-  const { data: capture, error: loadError } = await db
-    .from("captures")
-    .select("*")
-    .eq("id", captureId)
-    .eq("user_id", user.id)
-    .single();
+  let query = db.from("captures").select("*").eq("id", captureId);
+  if (user) query = query.eq("user_id", user.id);
+  const { data: capture, error: loadError } = await query.single();
 
   if (loadError || !capture) return json({ error: "capture not found" }, 404);
 
@@ -76,7 +87,21 @@ Deno.serve(async (req) => {
   if (capture.status === "done") return json({ status: "done", already: true });
   if (capture.attempts >= MAX_ATTEMPTS) return json({ status: "failed", exhausted: true });
 
-  await db.from("captures").update({ status: "processing" }).eq("id", captureId);
+  // F5.1: claim by compare-and-swap. An unconditional update let two
+  // concurrent invocations — the browser and the cron sweeper, say — both read
+  // 'queued' and both call the model: double spend, two agent_runs rows, and
+  // last-write-wins on the result. Filtering the update on the status we
+  // expect means exactly one caller can win.
+  const { data: claimed } = await db
+    .from("captures")
+    .update({ status: "processing" })
+    .eq("id", captureId)
+    .eq("status", "queued")
+    .select("id");
+
+  if (!claimed?.length) {
+    return json({ status: capture.status, claimed_by_other: true });
+  }
 
   const { data: areaRows } = await db.from("areas").select("*").order("sort_order");
   const areas = (areaRows ?? []).map((a) => Area.parse(a));
@@ -110,7 +135,7 @@ Deno.serve(async (req) => {
       })
       .eq("id", captureId);
 
-    await log(db, { user, captureId, usage, started, ok: true });
+    await log(db, { userId: capture.user_id, captureId, usage, started, ok: true });
     return json({ status: "done", area_id: areaId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -125,7 +150,7 @@ Deno.serve(async (req) => {
       })
       .eq("id", captureId);
 
-    await log(db, { user, captureId, usage, started, ok: false, error: message });
+    await log(db, { userId: capture.user_id, captureId, usage, started, ok: false, error: message });
     return json({ status: attempts >= MAX_ATTEMPTS ? "failed" : "queued", error: message }, 500);
   }
 });
@@ -199,7 +224,7 @@ function safeJson(text: string): unknown {
 async function log(
   db: SupabaseClient,
   o: {
-    user: { id: string };
+    userId: string;
     captureId: string;
     usage: { input_tokens: number; output_tokens: number };
     started: number;
@@ -208,7 +233,7 @@ async function log(
   },
 ): Promise<void> {
   await db.from("agent_runs").insert({
-    user_id: o.user.id,
+    user_id: o.userId,
     capture_id: o.captureId,
     step: "triage",
     model: MODELS.triage,
