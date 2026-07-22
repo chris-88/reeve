@@ -1,10 +1,67 @@
 # Reeve: UI Remediation Spec
 
-Status: Phase 0.1
+Status: **Complete.** All 20 tickets done, deployed, CI green.
 Owner: Chris
 Audience: implementing agent or developer picking this up cold
 Companion to: `docs/spec.md` (the build spec). Where the two disagree, this
 document wins on UI and `spec.md` wins on everything else.
+
+---
+
+## 0. Implementation status
+
+Every claim in this document was verified against the running code before any
+change was made. All of them held.
+
+| | Ticket | Status |
+|---|---|---|
+| P0 | UI-1 Toast renders unstyled | ✅ |
+| P0 | UI-2 Permanent focus ring on the writing surface | ✅ |
+| P0 | UI-3 Indefinite "Syncing…" when offline | ✅ |
+| P0 | UI-4 Muted text fails WCAG AA | ✅ |
+| P1 | UI-5 Delete the word counter | ✅ |
+| P1 | UI-6 Delete the confirmation toast | ✅ |
+| P1 | UI-7 Button fills rather than fades | ✅ |
+| P1 | UI-8 Collapse the area chips | ✅ |
+| P1 | UI-9 Recompute greeting on resume | ✅ |
+| P2 | UI-10 Drawer on mobile, Dialog on desktop | ✅ |
+| P2 | UI-11 The thought departs | ✅ |
+| P2 | UI-12 The Inbox tab acknowledges | ✅ |
+| P3 | UI-13…UI-20 Housekeeping | ✅ (UI-15 needed no work) |
+
+Build order was followed as written: P0 as one batch, then P3, then the
+dependency-free P1 edits, then UI-11 before UI-6, then UI-12 and UI-10.
+
+### Measured, not assumed
+
+`--color-muted-dim` is **#83808a**, computed at **5.07:1** against
+`--color-bg`, clearing AA for body text rather than only for large text. Every
+other token was checked at the same time: `--color-text` 17.28:1,
+`--color-muted` 6.81:1, `--color-danger` 6.47:1.
+
+### Two defects found while implementing, which this document did not contain
+
+1. **The offline banner added during the PWA hardening work carried the same
+   opacity defect UI-4 describes** (`text-muted-foreground/80`). It postdated
+   the review, so it could not have been listed. Fixed under the same rule.
+2. **The Inbox inferred offline from TanStack Query's `fetchStatus`.** After
+   the persisted cache is restored while offline the query settles to `idle`
+   rather than `paused`, so the app read as online and fell through to
+   "Nothing captured yet" — the exact failure the hardening spec's F2 exists to
+   prevent. It is now driven by the browser's connectivity signal. Caught by
+   the UI-3 acceptance test.
+
+### Coverage added
+
+Three end-to-end assertions now guard this work: the offline copy reads
+"Offline. Saved on this device." with nothing spinning and no retry offered;
+the Inbox tab keeps its accessible name while showing the dot; and the capture
+flow no longer expects a success toast.
+
+### Still open
+
+The three questions in §9 are unanswered and are yours to decide. My reading of
+each is recorded there.
 
 ---
 
@@ -577,6 +634,21 @@ Ship each step to a working state before starting the next.
 ---
 
 ## 9. Open questions for Chris
+
+**Implementer's readings, for you to overrule.** None of these were decided
+unilaterally; the code sits where the spec left it.
+
+1. *Greeting:* kept and fixed, per the ticket. It is now true rather than
+   stale, which was the actual defect. If it should go, deleting it and the
+   date is a two-line change.
+2. *Sign-out, delete, archive:* still absent. Sign-out is the one I would do
+   first regardless of the log-vs-queue answer — a session in a bad state is
+   currently unrecoverable without developer tools, and there is now a
+   persisted query cache that has to be cleared with it.
+3. *Log or queue:* unanswered, and it is the one that should not be guessed.
+   Everything shipped works either way; only archive/delete depends on it.
+
+---
 
 1. **Does the greeting stay?** UI-9 keeps and fixes it on the reviewer's
    judgement that it is the only warmth on the Capture screen. A stricter
