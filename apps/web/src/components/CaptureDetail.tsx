@@ -38,6 +38,12 @@ export default function CaptureDetail({
 }) {
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  /**
+   * UI-8: eight always-expanded chips were the loudest block in the sheet
+   * while serving its rarest action. The write behaviour is unchanged — this
+   * is about how the control is revealed, not what it records.
+   */
+  const [changing, setChanging] = useState(false);
   const current = capture.corrected_area_id ?? capture.area_id;
 
   /**
@@ -150,7 +156,28 @@ export default function CaptureDetail({
             <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
               Filed under
             </h3>
-            <div className="mt-2.5 flex flex-wrap gap-2">
+
+            {!changing && (
+              <div className="mt-2.5 flex items-center gap-3">
+                <span className="border-foreground/30 bg-secondary flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm">
+                  <span
+                    aria-hidden
+                    className="size-2 rounded-full"
+                    style={{ background: areas.find((a) => a.id === current)?.colour }}
+                  />
+                  {areas.find((a) => a.id === current)?.label ?? "Unsorted"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setChanging(true)}
+                  className="text-muted-dim hover:text-foreground text-sm underline underline-offset-4"
+                >
+                  Change
+                </button>
+              </div>
+            )}
+
+            <div className={cn("mt-2.5 flex-wrap gap-2", changing ? "flex" : "hidden")}>
               {areas
                 .filter((a) => a.active)
                 .map((a) => {

@@ -436,10 +436,333 @@ reason Web Push is a Phase 1 dependency rather than a nicety.
 
 ---
 
-## 7. Stage 5 — described, not built
+## 7. Stage 5 — Reeve changes Reeve
 
-Following the pattern of `docs/spec.md` §9. Recorded so that Stage 1 to 4
+The first agent that acts on the outside world.
+
+The `reeve` area already exists in the seeded taxonomy, so thoughts about the
+app are already being captured and filed. They currently go nowhere. Acting on
+one means being at a desk, remembering the thought, and describing it again to
+a coding agent — which is precisely the friction Reeve was built to remove, for
+every subject except itself.
+
+This stage closes that loop: a thought about the app, dictated in a car,
+becomes a reviewed change in the repository.
+
+### Why this comes before the general approval ledger
+
+§8 argues that an acting agent needs a durable approval gate, and that building
+one is substantial work. That argument stands for every action *except this
+one*, because this one's gate already exists:
+
+| §8 requires | Provided here by |
+|---|---|
+| A durable proposal that survives the agent dying | A GitHub issue |
+| An approval step that can be answered hours later, from anywhere | Pull request review, in the GitHub mobile app |
+| An executor separate from the proposer, with its own retries | GitHub Actions — `deploy.yml` already exists and already works |
+| A policy engine constraining what can be executed | Branch protection plus the CI gates from hardening F8 |
+| An audit trail | Git history, which is the best one in the building |
+| Reversibility | `git revert` |
+
+Nothing in this stage needs §8's `proposals` table, because for this action
+type GitHub *is* the proposals table. It is also a gate that has been reviewed
+by more people than anything this project will ever build.
+
+That makes this a better first acting agent than the Stage 4 brief in one
+important respect: the brief is safe because it is inert. This is safe because
+its blast radius is contained by a mature mechanism — which is a stronger
+property, and the one that generalises.
+
+### Why it is worth doing early
+
+Stage 5 is a force multiplier on the rest of this document. Every subsequent
+item — every observation that earns a feature in §9, every defect found in
+daily use — gets cheaper to record and act on. The system that makes the system
+easier to change should not be last in the queue.
+
+It is also substantially independent of Stages 1 to 4. It wants P1-F4's
+retrieval for clustering and P1-F5's cost ceiling before anything runs on a
+schedule, but a first version needs neither.
+
+### The honest risk, stated up front
+
+**The most seductive failure mode available to this project is that Reeve
+becomes a tool for building Reeve, and nothing else.**
+
+The system exists to serve contracting, Homeown.ie, the club, the charity, the
+day job and personal admin. A self-improvement loop is more immediately
+gratifying than any of those, and it is infinitely extensible. See P1-F10.5 for
+the metric that detects this happening, and treat a rising `reeve` share of
+captures as a warning rather than as engagement.
+
+---
+
+### P1-F7 — Change requests
+
+**Priority:** P0 for this stage · **Depends on:** hardening F4
+
+A change request is one or more captures, promoted deliberately, drafted into
+something a developer or coding agent can act on.
+
+The many-to-one shape matters. "The inbox feels cramped", "the date should be
+bigger" and "why is the word count still there" captured across three days are
+one ticket, not three. Filing them separately produces noise that has to be
+reconciled by hand — which is the work this stage exists to remove.
+
+#### Schema — migration `0004_change_requests.sql`
+
+```sql
+create type change_request_status as enum (
+  'draft',        -- captures gathered, nothing drafted yet
+  'proposed',     -- an agent has written a body; awaiting Chris
+  'rejected',     -- declined. Never deleted, and never re-proposed
+  'filed',        -- an issue exists on GitHub
+  'in_progress',  -- a pull request is open
+  'shipped',      -- merged and deployed
+  'abandoned'     -- closed without merging
+);
+
+create table change_requests (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  title        text not null,
+  body         text,                       -- markdown, house spec style
+  questions    text[] not null default '{}',  -- ambiguities the agent would not resolve
+  status       change_request_status not null default 'draft',
+  -- Outbound identity. Null until filed.
+  issue_number int,
+  issue_url    text,
+  pr_number    int,
+  pr_url       text,
+  -- Idempotency for the filing step. An approval acted on twice must not
+  -- create two issues. Same principle as §8's execution_key.
+  filing_key   text unique not null default gen_random_uuid()::text,
+  decided_at   timestamptz,
+  filed_at     timestamptz,
+  shipped_at   timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create table change_request_captures (
+  change_request_id uuid not null references change_requests(id) on delete cascade,
+  capture_id        uuid not null references captures(id) on delete cascade,
+  primary key (change_request_id, capture_id)
+);
+
+create index change_requests_open on change_requests (user_id, status, created_at desc);
+```
+
+#### Requirements
+
+- **P1-F7.1** Owner-scoped RLS on both tables, matching the existing `captures`
+  policies. No delete policy. A rejected idea is kept, for the same reason
+  `corrected_area_id` is kept: the record of what was declined is evidence.
+- **P1-F7.2** **A capture is never filed automatically.** Landing in the `reeve`
+  area makes a capture *eligible*, nothing more. `docs/spec.md` §9's hard rule —
+  no unattended write to the outside world without an explicit confirm step —
+  applies to creating an issue, not only to merging code.
+- **P1-F7.3** Rejected change requests are excluded from future clustering, and
+  their source captures are marked as considered. Without this the weekly
+  drafting pass re-proposes the same declined idea indefinitely, and the review
+  step becomes something to skip.
+- **P1-F7.4** A capture may belong to at most one non-rejected change request.
+  Enforce it, so the same thought cannot be filed twice through two clusters.
+- **P1-F7.5** Every state transition goes through the hardening F4 outbox, like
+  every other mutation in the app. Reviewing and deciding must work with no
+  signal; only the *filing* needs the network, and that happens server-side when
+  the decision syncs. Do not write a second sync mechanism.
+
+#### Acceptance criteria
+
+- Three captures about the same UI defect can be promoted into one change
+  request.
+- A change request approved while offline files exactly one issue when
+  connectivity returns, and files exactly one if the decision syncs twice.
+- A rejected request never reappears in a later drafting pass.
+
+---
+
+### P1-F8 — The drafting agent
+
+**Priority:** P0 for this stage · **Depends on:** P1-F7, P1-F5 (ceiling)
+
+Turns fragmentary dictated notes into something worth handing to a developer.
+
+#### Requirements
+
+- **P1-F8.1** Two triggers: on demand ("draft a change from these captures"),
+  and a weekly scheduled pass that clusters the unpromoted `reeve` pile. The
+  scheduled pass produces `draft` rows only — it never advances to `proposed`
+  without being read.
+- **P1-F8.2** Model: `claude-sonnet-5`. Drafting is the documented use for that
+  tier in `packages/shared/src/models.ts`. Add `change_request` to the `MODELS`
+  map rather than hardcoding.
+- **P1-F8.3** Structured output, Zod-validated, `stop_reason` guarded for
+  `refusal` and `max_tokens` before reading content. The triage function is the
+  reference implementation and this should read like it.
+- **P1-F8.4** Output shape: `title`, `body` (markdown), `acceptance_criteria`,
+  `files_likely_touched`, `size` (one of small / medium / large), and
+  `questions`.
+- **P1-F8.5** **The agent must not resolve ambiguity by inventing
+  requirements.** A dictated fragment frequently does not contain enough to
+  specify a change. Anything the agent had to guess goes in `questions` and is
+  surfaced in review. A confidently-specified wrong thing is worse than an
+  obviously incomplete one, because the first gets built.
+- **P1-F8.6** House style lives in
+  `packages/shared/src/change-request-prompt.ts`, mirroring
+  `triage-prompt.ts`. Do not fetch the repository's own specs to derive style —
+  that is a retrieval feature to be earned, and `docs/spec.md` is gitignored so
+  it is not there to fetch.
+- **P1-F8.7** Log to `agent_runs` with `step = 'change_request'`. The table
+  needs no change. Respect the P1-F5.2 budget ceiling.
+- **P1-F8.8** The drafted body must cite its source captures verbatim. The raw
+  words are the requirement; the agent's prose is an interpretation of them, and
+  the reviewer needs both.
+
+#### Acceptance criteria
+
+- Three related captures produce one coherent issue body in the house style,
+  with the original wording quoted.
+- A capture too vague to specify produces a `questions` entry rather than a
+  confident invention.
+- Cost appears in `agent_runs` and respects the ceiling.
+
+---
+
+### P1-F9 — Filing, and the handoff
+
+**Priority:** P0 for this stage · **Depends on:** P1-F7
+
+#### Requirements
+
+- **P1-F9.1** A new Edge Function, `file-change-request`. It is the only place
+  the GitHub credential exists.
+- **P1-F9.2** The credential is a fine-grained personal access token, scoped to
+  the single repository, with **`issues: write` and nothing else.** It must not
+  carry `contents: write`. Reeve files issues; it does not push code. The coding
+  agent has its own, separate credentials and they never meet.
+- **P1-F9.3** Idempotent on `filing_key`. Before creating, search for an
+  existing issue carrying that key. An approval that syncs twice from the
+  outbox must not produce two issues.
+- **P1-F9.4** The issue body carries the change request id and its source
+  capture ids, so the trail from thought to diff is followable in both
+  directions.
+- **P1-F9.5** Handing off to a coding agent is **opt-in per request**, chosen at
+  approval time. Filing an issue and asking for it to be built are different
+  decisions, and some things want thinking about before they want implementing.
+  Where opted in, the handoff is a `@claude` mention picked up by the Claude
+  Code GitHub Action.
+- **P1-F9.6** **Do not build the coding agent.** It exists, it is maintained,
+  and it already runs in GitHub Actions with the right permission model. This
+  stage's scope ends at a well-formed issue.
+- **P1-F9.7** Add GitHub token patterns — `ghp_`, `github_pat_`, `gho_` — to
+  `PATTERNS` in `scripts/check-bundle.mjs`. That script exists for exactly this
+  class of mistake and currently has no entry for the credential this stage
+  introduces.
+- **P1-F9.8** Cap the number of open auto-filed issues (suggest 10). A drafting
+  pass that misbehaves should hit a wall, not fill the repository. Refusing is
+  correct behaviour; log it and alert.
+
+#### Acceptance criteria
+
+- Approving a change request creates exactly one issue, linked back to its
+  captures.
+- Replaying the same approval creates none.
+- The token cannot push a commit, verified by attempting it.
+- A build containing a GitHub token fails `check-bundle.mjs`.
+
+---
+
+### P1-F10 — Closing the loop
+
+**Priority:** P1 for this stage · **Depends on:** P1-F9, hardening §4 Web Push
+
+Without this, Reeve can send a thought outward and never learn what became of
+it — which is exactly the open-loop problem `corrected_area_id` was designed to
+avoid elsewhere.
+
+#### Requirements
+
+- **P1-F10.1** A GitHub webhook into an Edge Function, updating
+  `change_requests.status` on pull request opened, merged and closed. Verify the
+  webhook signature; this is an unauthenticated public endpoint and is the one
+  new attack surface this stage introduces.
+- **P1-F10.2** On merge: status `shipped`, `shipped_at` set, and the source
+  captures marked accordingly. A thought becoming a deployed change is the most
+  satisfying event this system can produce and it should be visible.
+- **P1-F10.3** Push notification on `shipped`. Per the Stage 4 latency note, the
+  contract here is "it will be there later, and you will be told."
+- **P1-F10.4** Surface capture-to-shipped lead time. It is the only honest
+  measure of whether this loop is working.
+- **P1-F10.5** Surface the `reeve` share of total captures, weekly, alongside
+  the P1-F3 taxonomy report. A rising share means the tool is eating its own
+  purpose. This metric exists to be acted on, not admired.
+
+#### Acceptance criteria
+
+- Merging a pull request moves its change request to `shipped` and produces a
+  push notification.
+- An unsigned webhook request is rejected.
+- The `reeve` capture share is visible in the weekly report.
+
+---
+
+### P1-F11 — Where this lives in the UI
+
+**Not a third nav item.** `docs/ui-spec.md`'s governing principle — *the thought
+is fleeting; everything on screen either serves capturing it or gets deleted* —
+applies with full force, and this is a weekly activity competing for space with
+a daily one.
+
+- **P1-F11.1** Entry is the existing `reeve` filter chip in the Inbox. The
+  chip's presence is already the affordance; add a "Draft a change" action to
+  the filtered view when unpromoted captures exist.
+- **P1-F11.2** Review is one request at a time, full screen, in the pattern of
+  `CaptureDetail`. The drafted body, the source captures quoted, the agent's
+  questions, then Approve / Edit / Reject.
+- **P1-F11.3** Approval is one deliberate tap. Not a confirm dialog — the
+  reviewing *is* the confirmation, and a second modal trains the reflex this
+  gate exists to prevent.
+- **P1-F11.4** A permanent nav item is earned by finding yourself reaching for
+  this daily. Until then it stays where it is.
+
+---
+
+### P1-F12 — Guardrails
+
+This is a system that modifies itself. The constraints are the feature.
+
+- **P1-F12.1** No auto-merge, ever, under any condition.
+- **P1-F12.2** Branch protection on `main`, with the hardening F8 CI gates
+  required. Those gates — typecheck, lint, unit tests, build, Playwright on both
+  engines — are what make an agent-authored diff safe to look at.
+- **P1-F12.3** Pull requests touching `.github/workflows/`,
+  `supabase/migrations/`, `scripts/check-bundle.mjs`, or anything under
+  `supabase/functions/` must be flagged for heightened review. These are the
+  diffs that can disable the gates, alter data irreversibly, or reach
+  credentials. The agent may propose them; they must never be skimmed.
+- **P1-F12.4** Reeve has no deployment capability and never acquires one.
+  Merging triggers the existing `deploy.yml`. Reeve's involvement ends at the
+  issue.
+- **P1-F12.5** Split credentials, as P1-F9.2 requires: the filing token cannot
+  write code, the coding agent's token cannot file issues. Neither can reach
+  Supabase.
+- **P1-F12.6** The drafting agent reads captures. It does not read the database
+  beyond them, and it has no write access to anything but its own
+  `change_requests` row.
+
+---
+
+## 8. Stage 6 — described, not built
+
+Following the pattern of `docs/spec.md` §9. Recorded so that Stage 1 to 5
 decisions do not preclude it. **Do not build this.**
+
+Stage 5 handles one action type — changing this repository — using a gate that
+already existed. Everything else that acts on the outside world (email,
+calendar, messages, anything touching money or third parties) has no such gate,
+and needs the one below.
 
 ### The approval gate must be a table, not a blocked session
 
@@ -490,7 +813,7 @@ conventional: **agents draft, Chris approves.**
 
 ---
 
-## 8. Explicitly out of scope
+## 9. Explicitly out of scope
 
 Per the governing principle, each of these ships only when the stated
 observation occurs.
@@ -503,38 +826,49 @@ observation occurs.
 | **A corrections screen** | You find yourself running `pnpm triage:report` weekly |
 | **User-authored commitments** — adding one without a capture | You observe yourself capturing a note purely to create a task, which means the capture is ceremony |
 | **Per-area dashboards** | Named as out of scope in `docs/spec.md` §9 and nothing here changes that |
-| **Any outbound action** | Stage 5, behind §7's ledger. Not before |
+| **Any outbound action other than filing an issue on this repository** | Stage 6, behind §8's ledger. Not before |
+| **Approving a pull request from inside Reeve** | You find yourself wanting to merge from your phone and the GitHub mobile app is the thing in the way. It is a perfectly good review surface and duplicating it is work with no payoff |
 
 ---
 
-## 9. Sequencing
+## 10. Sequencing
 
 ```
 P1-F0  areas ownership ─────────────────────────► this week, independently
 
+P1-F7  change requests ──► P1-F8  drafting ──► P1-F9  filing ──► P1-F10  loop
+                                                                  Stage 5
 P1-F1  commitments ──► P1-F2  Due view            Stage 1
 P1-F3  corrections report ────────────────────►   Stage 2 — small, do it early
 P1-F4  retrieval ─────────────────────────────►   Stage 3
 P1-F5  cost ceiling ──► P1-F6  daily brief        Stage 4
 
-                        Stage 5 — not built
+                        Stage 6 — not built
 ```
 
-Three notes on ordering:
+Four notes on ordering:
 
 **P1-F0 does not wait.** It is a live exposure and a five-line migration.
+
+**Stage 5 is drawn first deliberately.** It is out of numerical order because
+it is a force multiplier: every item below it becomes cheaper to record, draft
+and act on once it exists. The counter-argument is that it is also the first
+outbound write and therefore the first thing that can embarrass you, which is
+why P1-F7.2 and the §7 guardrails are not negotiable. On balance, build it
+early and hold the discipline.
 
 **P1-F3 is disproportionately cheap.** Two SQL views and a script, against a
 column that already contains real data. It should not queue behind Stage 1
 simply because it is numbered later; if there is a spare afternoon, it is the
 best use of one in this document.
 
-**P1-F5 before P1-F6, without exception.** The first thing that runs unattended
-must not also be the first thing with no spending limit.
+**P1-F5 before P1-F6 and before P1-F8's scheduled pass, without exception.**
+The first things that run unattended must not also be the first things with no
+spending limit.
 
 ---
 
-## 10. Definition of done
+## 11. Definition of done
 
 1. A second account on the project can read nothing personal belonging to the
    first.
@@ -544,8 +878,19 @@ must not also be the first thing with no spending limit.
 4. The question "which classifier hint is wrong?" has an evidence-based answer.
 5. A brief arrives, unprompted, referencing real outstanding obligations by
    name, and its cost is visible and capped.
-6. Nothing in the system has yet sent anything to anyone.
+6. A thought about the app, dictated away from a desk, has become a merged pull
+   request without ever being typed a second time.
+7. The system has still contacted no third party, moved no money, and sent no
+   message on anyone's behalf.
 
-Point 6 is deliberate. Phase 1 is done when the system is useful and still
-cannot act. That is the correct order: prove the substrate, then grant it
-reach.
+Points 6 and 7 are the pair that matters, and they are not in tension.
+
+Filing an issue on your own repository is an outbound write, and it is treated
+as one — behind an explicit confirm step, an idempotency key, a scoped
+credential and a capped rate. But its blast radius is a repository you own,
+reviewed by you, revertible by you, and visible to nobody else. That is a
+categorically different thing from an email arriving in a client's inbox.
+
+Phase 1 is done when the system can change *itself* under review, and still
+cannot reach *anyone*. Prove the substrate on the target where a mistake costs
+a closed pull request, then decide whether to grant it further reach.

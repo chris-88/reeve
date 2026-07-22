@@ -8,12 +8,20 @@ import { clearDraft, readDraft, writeDraft } from "@/lib/draft";
 import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
 
-const greeting = () => {
-  const h = new Date().getHours();
-  if (h < 12) return "Morning";
-  if (h < 18) return "Afternoon";
-  return "Evening";
-};
+type Header = { greeting: string; date: string };
+
+function nowHeader(): Header {
+  const now = new Date();
+  const h = now.getHours();
+  return {
+    greeting: h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening",
+    date: now.toLocaleDateString("en-IE", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }),
+  };
+}
 
 /**
  * On mobile the dictation path is the iOS keyboard's own mic key, so the job
@@ -25,6 +33,7 @@ export default function Capture({ userId }: { userId: string }) {
   const [pending, setPending] = useState<PendingCapture[]>([]);
   const [saving, setSaving] = useState(false);
   const online = useOnline();
+  const [header, setHeader] = useState(nowHeader);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // An installed PWA can be evicted from memory mid-sentence. Persist keystrokes.
@@ -33,6 +42,16 @@ export default function Capture({ userId }: { userId: string }) {
   }, [text]);
 
   useEffect(() => subscribe(setPending), []);
+
+  // Recompute on resume: an installed PWA is not reloaded across a day
+  // boundary, so a render-time value goes stale and starts lying.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") setHeader(nowHeader());
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
 
   /**
    * The field clears only once the capture is durable locally.
@@ -70,15 +89,12 @@ export default function Capture({ userId }: { userId: string }) {
    * nothing to retry against while offline, so that affordance is withheld too.
    */
   const sync = !online ? "offline" : dead.length > 0 ? "stuck" : "syncing";
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-baseline justify-between px-6 pt-8 pb-2">
-        <h1 className="font-serif text-[1.75rem] leading-none font-normal">{greeting()}</h1>
-        <span className="text-muted-foreground text-sm tabular-nums">
-          {new Date().toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" })}
-        </span>
+        <h1 className="font-serif text-[1.75rem] leading-none font-normal">{header.greeting}</h1>
+        <span className="text-muted-dim text-sm tabular-nums">{header.date}</span>
       </header>
 
       {/*
@@ -144,17 +160,15 @@ export default function Capture({ userId }: { userId: string }) {
         <Button
           type="button"
           size="lg"
+          variant={text.trim() ? "default" : "outline"}
           onClick={() => void save()}
           disabled={!text.trim() || saving}
-          className="h-[3.75rem] w-full rounded-2xl text-[0.95rem] font-medium tracking-wide transition-all disabled:opacity-20"
+          // Always rendered, never conditional — removing it would make the
+          // writing area jump as the first character lands.
+          className="h-[3.75rem] w-full rounded-2xl text-[0.95rem] font-medium tracking-wide transition-all"
         >
           <ArrowUp className="size-5" strokeWidth={2.5} aria-hidden />
           {saving ? "Saving…" : "Capture"}
-          {!saving && words > 0 && (
-            <span className="text-primary-foreground/50 ml-1 text-sm font-normal tabular-nums">
-              {words} {words === 1 ? "word" : "words"}
-            </span>
-          )}
         </Button>
       </div>
     </div>
