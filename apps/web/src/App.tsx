@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Inbox as InboxIcon, PenLine } from "lucide-react";
+import { Inbox as InboxIcon, ListChecks, PenLine } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
@@ -10,12 +10,19 @@ import { requestPersistentStorage } from "@/lib/draft";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
+import Due from "@/screens/Due";
 import Inbox from "@/screens/Inbox";
 
-type Screen = "capture" | "inbox";
+type Screen = "capture" | "due" | "inbox";
 
+/**
+ * Write, then owe, then log. Due sits in the middle because that is the order
+ * a thought moves through the system, and because it is the screen that turns
+ * Reeve from something written into to something looked at.
+ */
 const NAV = [
   { id: "capture", label: "Write", Icon: PenLine },
+  { id: "due", label: "Due", Icon: ListChecks },
   { id: "inbox", label: "Inbox", Icon: InboxIcon },
 ] as const;
 
@@ -72,7 +79,9 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <main className="pt-safe min-h-0 flex-1">
-        {screen === "capture" ? <Capture userId={session.user.id} /> : <Inbox />}
+        {screen === "capture" && <Capture userId={session.user.id} />}
+        {screen === "due" && <Due userId={session.user.id} />}
+        {screen === "inbox" && <Inbox />}
       </main>
 
       <nav

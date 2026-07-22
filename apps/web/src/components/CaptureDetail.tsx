@@ -1,36 +1,25 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Check, RotateCw } from "lucide-react";
-import type { Area, Capture, Entities } from "@reeve/shared";
+import type { Area, Capture, Commitment, Entities } from "@reeve/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import { useMediaQuery } from "@/lib/useMediaQuery";
+import ResponsiveSheet from "@/components/ResponsiveSheet";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 const ENTITY_LABELS: Record<keyof Entities, string> = {
-  commitments: "Commitments",
   people: "People",
   dates: "Dates",
   amounts: "Amounts",
   orgs: "Organisations",
 };
 
-// Commitments first — they are the only entity type that implies an action.
-const ENTITY_ORDER: (keyof Entities)[] = [
-  "commitments",
-  "people",
-  "dates",
-  "amounts",
-  "orgs",
-];
+// Commitments used to head this list, being the only entity type that implies
+// an action. That is now exactly why they are not here: they are rows with a
+// due date and a status, shown above as things owed rather than as chips.
+const ENTITY_ORDER: (keyof Entities)[] = ["people", "dates", "amounts", "orgs"];
 
 export default function CaptureDetail({
   capture,
@@ -65,6 +54,12 @@ export default function CaptureDetail({
       .from("captures")
       .update({ corrected_area_id: areaId, corrected_at: new Date().toISOString() })
       .eq("id", capture.id);
+    // Carry the correction to this capture's commitments. Area is the colour
+    // signal in the Due view, and a commitment still wearing the colour of an
+    // area the capture has been moved out of is simply wrong on screen. Only
+    // area_id moves; origin stays 'model' because the extraction was not what
+    // was corrected.
+    await supabase.from("commitments").update({ area_id: areaId }).eq("capture_id", capture.id);
     setSaving(false);
     onCorrected();
     onClose();
@@ -88,18 +83,30 @@ export default function CaptureDetail({
   }
 
   /**
-   * UI-10: a phone expects swipe-down to dismiss; a full-screen Dialog only
-   * offers a small × in the corner. Drawer below sm, Dialog above, which is
-   * shadcn's documented responsive pattern.
+   * What this capture put on the list. Read-only here — the Due view owns
+   * completing and editing — but shown, because "what did this turn into" is
+   * the question anyone opening a capture with commitments is asking.
    */
-  const isDesktop = useMediaQuery("(min-width: 640px)");
+  const { data: commitments = [] } = useQuery({
+    queryKey: ["commitments", capture.id],
+    queryFn: async (): Promise<Commitment[]> => {
+      const { data, error } = await supabase
+        .from("commitments")
+        .select("*")
+        .eq("capture_id", capture.id)
+        .order("created_at");
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const entities = capture.entities;
   const populated = entities
     ? ENTITY_ORDER.filter((k) => entities[k]?.length).map((k) => [k, entities[k]] as const)
     : [];
 
-  const body = (
+  return (
+    <ResponsiveSheet title={capture.title ?? "Capture"} onClose={onClose}>
     <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6">
           {capture.summary && (
             <p className="font-serif text-[1.15rem] leading-relaxed">{capture.summary}</p>
@@ -128,6 +135,38 @@ export default function CaptureDetail({
                 <RotateCw className={cn("size-4", retrying && "animate-spin")} aria-hidden />
                 {retrying ? "Trying again…" : "Try filing it again"}
               </Button>
+            </div>
+          )}
+
+          {commitments.length > 0 && (
+            <div>
+              <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
+                What you said you&rsquo;d do
+              </h3>
+              <ul className="mt-2 space-y-1.5">
+                {commitments.map((c) => (
+                  <li key={c.id} className="flex items-baseline gap-2.5 text-sm">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mt-1 size-1.5 shrink-0 rounded-full",
+                        c.status === "open" ? "bg-foreground/50" : "bg-muted-foreground/30",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1",
+                        c.status !== "open" && "text-muted-dim line-through",
+                      )}
+                    >
+                      {c.text}
+                    </span>
+                    {c.due_text && (
+                      <span className="text-muted-dim shrink-0 text-xs">{c.due_text}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -229,41 +268,6 @@ export default function CaptureDetail({
             </p>
           </div>
     </div>
-  );
-
-  const title = capture.title ?? "Capture";
-
-  if (isDesktop) {
-    return (
-      <Dialog open onOpenChange={(o) => !o && onClose()}>
-        <DialogContent
-          showCloseButton
-          // The title and body are the description; Radix only needs to be
-          // told this is deliberate rather than an omission.
-          aria-describedby={undefined}
-          className="flex max-h-[88vh] w-full max-w-lg flex-col gap-0 rounded-2xl p-0"
-        >
-          <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-4 text-left">
-            <DialogTitle className="pr-8 font-serif text-[1.35rem] leading-snug font-normal">
-              {title}
-            </DialogTitle>
-          </DialogHeader>
-          {body}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  return (
-    <Drawer open onOpenChange={(o) => !o && onClose()}>
-      <DrawerContent aria-describedby={undefined} className="max-h-[92dvh]">
-        <DrawerHeader className="border-border/60 shrink-0 border-b px-6 py-3 text-left">
-          <DrawerTitle className="font-serif text-[1.35rem] leading-snug font-normal">
-            {title}
-          </DrawerTitle>
-        </DrawerHeader>
-        {body}
-      </DrawerContent>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }

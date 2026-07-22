@@ -14,6 +14,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:status": "node scripts/migrate.mjs --status",
     "db:seed": "node scripts/seed-areas.mjs",
+    "db:backfill-commitments": "node scripts/backfill-commitments.mjs",
+    "triage:report": "node scripts/triage-report.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "lint": "eslint . --max-warnings 0",

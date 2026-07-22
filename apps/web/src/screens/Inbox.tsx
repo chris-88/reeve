@@ -4,7 +4,7 @@ import { AlertCircle, CloudOff, Loader2, PenLine, WifiOff } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
-import { subscribe, type PendingCapture } from "@/lib/outbox";
+import { captureOps, subscribe, type CaptureOp, type PendingOp } from "@/lib/outbox";
 import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
 import CaptureDetail from "@/components/CaptureDetail";
@@ -32,10 +32,10 @@ export default function Inbox() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<string | null>(null);
   const [open, setOpen] = useState<Capture | null>(null);
-  const [pending, setPending] = useState<PendingCapture[]>([]);
+  const [pending, setPending] = useState<(PendingOp & { op: CaptureOp })[]>([]);
   const online = useOnline();
 
-  useEffect(() => subscribe(setPending), []);
+  useEffect(() => subscribe((items) => setPending(captureOps(items))), []);
 
   const { data: areas = [] } = useQuery({
     queryKey: ["areas"],
@@ -163,7 +163,9 @@ export default function Inbox() {
                     aria-hidden
                   />
                 )}
-                <p className="text-muted-foreground min-w-0 flex-1 truncate text-sm">{p.raw_text}</p>
+                <p className="text-muted-foreground min-w-0 flex-1 truncate text-sm">
+                  {p.op.raw_text}
+                </p>
               </li>
             ))}
           </ul>

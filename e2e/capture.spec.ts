@@ -22,11 +22,47 @@ test.beforeAll(async () => {
   // Clear this user's captures between runs. Without it, rows accumulate in the
   // real project and repeated runs produce duplicate titles, which turn strict
   // locators into false failures. Scoped to the test account only.
+  // Commitments go with the captures by cascade.
   const { data: users } = await admin.auth.admin.listUsers();
   const testUser = users.users.find((u) => u.email === EMAIL);
   if (testUser) {
     await admin.from("agent_runs").delete().eq("user_id", testUser.id);
     await admin.from("captures").delete().eq("user_id", testUser.id);
+
+    /**
+     * The test account needs its own taxonomy.
+     *
+     * Before areas were owner-scoped this suite read the owner's real one —
+     * every classifier_hint describing a real part of his life — which is the
+     * exposure P1-F0 closed. These hints are invented, and `unsorted` has to
+     * exist or triage has nowhere to put a capture it cannot place.
+     */
+    await admin.from("areas").upsert(
+      [
+        {
+          id: "site",
+          label: "Site",
+          classifier_hint: "Building work: materials, subcontractors, pours, deliveries.",
+          colour: "#b45309",
+          sort_order: 0,
+        },
+        {
+          id: "admin",
+          label: "Admin",
+          classifier_hint: "Invoices, insurance, tax, paperwork of any kind.",
+          colour: "#0369a1",
+          sort_order: 1,
+        },
+        {
+          id: "unsorted",
+          label: "Unsorted",
+          classifier_hint: "Anything that cannot be placed confidently.",
+          colour: "#71717a",
+          sort_order: 99,
+        },
+      ].map((a) => ({ ...a, owner_id: testUser.id })),
+      { onConflict: "owner_id,id" },
+    );
   }
 });
 
@@ -99,6 +135,29 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   expect(runs!.length).toBeGreaterThan(0);
   expect(runs![0]!.ok).toBe(true);
   expect(Number(runs![0]!.cost_usd)).toBeGreaterThan(0);
+
+  /**
+   * P1-F1: the promise in that sentence became a row.
+   *
+   * The capture says "ring the site foreman about the concrete pour on
+   * thursday", so a commitment must exist, and its due date must be resolved
+   * against the capture's own day rather than left as an unanchored word.
+   */
+  const { data: commitments } = await user
+    .from("commitments")
+    .select("*")
+    .eq("capture_id", row.id as string);
+
+  expect(commitments!.length, "a stated intention becomes a commitment").toBeGreaterThan(0);
+  const commitment = commitments![0]!;
+  expect(commitment.status).toBe("open");
+  expect(commitment.origin).toBe("model");
+  expect(commitment.due_text, "the words as spoken are kept").toMatch(/thursday/i);
+  expect(commitment.due_at, "and resolved to a real date").toBeTruthy();
+
+  // The Due view shows it, grouped by when it is owed rather than by area.
+  await page.getByRole("navigation").getByRole("button", { name: "Due" }).click();
+  await expect(page.getByText(commitment.text as string)).toBeVisible();
 });
 
 test("a draft survives a reload", async ({ page }) => {

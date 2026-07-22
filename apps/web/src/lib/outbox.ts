@@ -1,8 +1,9 @@
-import { get, update } from "idb-keyval";
+import { del, get, update } from "idb-keyval";
+import type { CommitmentStatus } from "@reeve/shared";
 import { supabase } from "./supabase";
 
 /**
- * Local-first capture queue.
+ * Local-first mutation queue.
  *
  * A thought is fleeting and the network in a car or on a site is not reliable.
  * Saving therefore writes to IndexedDB and returns immediately; syncing to
@@ -11,9 +12,22 @@ import { supabase } from "./supabase";
  * Each item carries a client-generated id, so a retry after a lost response
  * inserts the same primary key rather than a duplicate row. That is the part
  * that makes the whole thing safe.
+ *
+ * It began as a capture queue. P1-F2.3 requires the Due view's mutations to
+ * travel the same road — a second sync mechanism would diverge from this one
+ * on backoff, dead-lettering and atomicity, and the divergence would only show
+ * up on a building site with no signal. So the item carries an `op` describing
+ * what to send, and the machinery around it is unchanged.
  */
 
-const KEY = "reeve.outbox.v1";
+const KEY = "reeve.outbox.v2";
+
+/**
+ * Items queued before the Due view shipped. Captures still sitting here belong
+ * to the device, not to the release that queued them, so they are migrated
+ * rather than dropped.
+ */
+const LEGACY_KEY = "reeve.outbox.v1";
 
 /** Attempts before an item stops retrying by itself and waits for the user. */
 const DEAD_LETTER_AFTER = 10;
@@ -31,7 +45,36 @@ const REQUEST_TIMEOUT_MS = 15_000;
 /** If a flush somehow outlives this, the latch is forced open. */
 const FLUSH_CEILING_MS = 90_000;
 
-export type PendingCapture = {
+export type CaptureOp = {
+  kind: "capture";
+  raw_text: string;
+  created_at: string;
+};
+
+/**
+ * The subset of a commitment the user can change.
+ *
+ * `origin` is set to 'user' by every edit that touches the text or the date:
+ * as with corrected_area_id, the divergence between what the model extracted
+ * and what Chris meant is evidence about extraction quality. Completing or
+ * dropping is not an edit of the extraction and leaves it alone.
+ */
+export type CommitmentPatch = {
+  status?: CommitmentStatus;
+  completed_at?: string | null;
+  text?: string;
+  due_text?: string | null;
+  due_at?: string | null;
+  origin?: "user";
+};
+
+export type CommitmentOp = {
+  kind: "commitment";
+  commitmentId: string;
+  patch: CommitmentPatch;
+};
+
+export type PendingOp = {
   id: string;
   /**
    * Recorded at enqueue rather than looked up at flush time. Looking it up
@@ -40,17 +83,16 @@ export type PendingCapture = {
    * after a different sign-in.
    */
   userId: string;
-  raw_text: string;
-  created_at: string;
   attempts: number;
   /** Epoch ms. Not eligible for another attempt before this. */
   nextAttemptAt: number;
   lastError?: string;
   /** Retries exhausted. Kept forever; only an explicit user retry revives it. */
   deadLettered: boolean;
+  op: CaptureOp | CommitmentOp;
 };
 
-type Listener = (items: PendingCapture[]) => void;
+type Listener = (items: PendingOp[]) => void;
 const listeners = new Set<Listener>();
 
 let flushing = false;
@@ -59,8 +101,59 @@ let flushAgain = false;
 let inFlight: Promise<void> | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 
-async function read(): Promise<PendingCapture[]> {
-  return (await get<PendingCapture[]>(KEY)) ?? [];
+type LegacyItem = {
+  id: string;
+  userId: string;
+  raw_text: string;
+  created_at: string;
+  attempts: number;
+  nextAttemptAt: number;
+  lastError?: string;
+  deadLettered: boolean;
+};
+
+let migration: Promise<void> | null = null;
+
+/**
+ * Carry v1 items across, once, before anything reads the queue.
+ *
+ * The latch is a module-level promise rather than a flag because read() and
+ * mutate() are both called concurrently on mount; two migrations racing would
+ * double every unsent capture.
+ */
+function ensureMigrated(): Promise<void> {
+  return (migration ??= (async () => {
+    try {
+      const legacy = await get<LegacyItem[]>(LEGACY_KEY);
+      if (legacy?.length) {
+        await update<PendingOp[]>(KEY, (current) => {
+          const known = new Set((current ?? []).map((i) => i.id));
+          const carried = legacy
+            .filter((i) => !known.has(i.id))
+            .map<PendingOp>((i) => ({
+              id: i.id,
+              userId: i.userId,
+              attempts: i.attempts,
+              nextAttemptAt: i.nextAttemptAt,
+              lastError: i.lastError,
+              deadLettered: i.deadLettered,
+              op: { kind: "capture", raw_text: i.raw_text, created_at: i.created_at },
+            }));
+          return [...(current ?? []), ...carried];
+        });
+      }
+      await del(LEGACY_KEY);
+    } catch (err) {
+      // Losing the migration must not take the queue down with it: a v2 item
+      // saved right now matters more than a v1 item we can retry next launch.
+      console.error("[reeve] outbox migration failed", err);
+    }
+  })());
+}
+
+async function read(): Promise<PendingOp[]> {
+  await ensureMigrated();
+  return (await get<PendingOp[]>(KEY)) ?? [];
 }
 
 /**
@@ -70,11 +163,10 @@ async function read(): Promise<PendingCapture[]> {
  * Doing it as a separate get and set let a capture saved during a flush be
  * overwritten by the flush's own write.
  */
-async function mutate(
-  fn: (items: PendingCapture[]) => PendingCapture[],
-): Promise<PendingCapture[]> {
-  let next: PendingCapture[] = [];
-  await update<PendingCapture[]>(KEY, (current) => {
+async function mutate(fn: (items: PendingOp[]) => PendingOp[]): Promise<PendingOp[]> {
+  await ensureMigrated();
+  let next: PendingOp[] = [];
+  await update<PendingOp[]>(KEY, (current) => {
     next = fn(current ?? []);
     return next;
   });
@@ -88,8 +180,31 @@ export function subscribe(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
-export async function peek(): Promise<PendingCapture[]> {
+export async function peek(): Promise<PendingOp[]> {
   return read();
+}
+
+/** Only the capture ops. The capture screen has nothing to say about the rest. */
+export function captureOps(items: readonly PendingOp[]): (PendingOp & { op: CaptureOp })[] {
+  return items.filter((i): i is PendingOp & { op: CaptureOp } => i.op.kind === "capture");
+}
+
+/**
+ * Every queued change to a commitment, merged, most recent last.
+ *
+ * The Due view lays this over the server rows so an unsynced change survives a
+ * cold reload rather than appearing to have been forgotten.
+ */
+export function pendingPatch(
+  items: readonly PendingOp[],
+  commitmentId: string,
+): CommitmentPatch | undefined {
+  let merged: CommitmentPatch | undefined;
+  for (const item of items) {
+    if (item.op.kind !== "commitment" || item.op.commitmentId !== commitmentId) continue;
+    merged = { ...merged, ...item.op.patch };
+  }
+  return merged;
 }
 
 export function backoffFor(attempts: number): number {
@@ -99,19 +214,74 @@ export function backoffFor(attempts: number): number {
 }
 
 /** Queue a capture. Resolves once it is durable locally, not when it syncs. */
-export async function enqueue(rawText: string, userId: string): Promise<PendingCapture> {
-  const item: PendingCapture = {
+export async function enqueue(rawText: string, userId: string): Promise<PendingOp> {
+  const item: PendingOp = {
     id: crypto.randomUUID(),
     userId,
-    raw_text: rawText.trim(),
-    created_at: new Date().toISOString(),
     attempts: 0,
     nextAttemptAt: 0,
     deadLettered: false,
+    op: { kind: "capture", raw_text: rawText.trim(), created_at: new Date().toISOString() },
   };
   await mutate((items) => [item, ...items]);
   void flush();
   return item;
+}
+
+/**
+ * Queue a change to a commitment.
+ *
+ * Keyed on the commitment rather than on the action, so marking something done
+ * and then dropping it queues one merged write instead of two that race. The
+ * merge also revives a dead-lettered item: the user touching it again is the
+ * same deliberate signal `retryItem` acts on.
+ */
+export async function enqueueCommitmentPatch(
+  commitmentId: string,
+  userId: string,
+  patch: CommitmentPatch,
+): Promise<void> {
+  const id = `commitment:${commitmentId}`;
+  await mutate((items) => {
+    const existing = items.find((i) => i.id === id);
+    const merged: PendingOp = {
+      id,
+      userId,
+      attempts: 0,
+      nextAttemptAt: 0,
+      deadLettered: false,
+      op: {
+        kind: "commitment",
+        commitmentId,
+        patch: {
+          ...(existing?.op.kind === "commitment" ? existing.op.patch : {}),
+          ...patch,
+        },
+      },
+    };
+    return existing ? items.map((i) => (i.id === id ? merged : i)) : [...items, merged];
+  });
+  void flush();
+}
+
+/**
+ * Make everything eligible again, immediately.
+ *
+ * Backoff exists so a failing server is not hammered. It is the wrong
+ * behaviour when the failures were caused by having no signal: half an hour in
+ * a basement widens every item's next attempt to five minutes, so the moment
+ * the phone reconnects it does nothing, and the user watches a queue that
+ * looks stuck. Connectivity returning is new information, and it should be
+ * acted on rather than waited out.
+ *
+ * Dead-lettered items are left alone. Ten consecutive failures is not a
+ * connectivity story, and reviving them here would make the dead-letter state
+ * unreachable.
+ */
+export async function clearBackoff(): Promise<void> {
+  await mutate((items) =>
+    items.map((i) => (i.deadLettered ? i : { ...i, nextAttemptAt: 0 })),
+  );
 }
 
 /** Revive a dead-lettered item. Only ever called by an explicit user action. */
@@ -129,7 +299,7 @@ function timeout(): AbortSignal {
 }
 
 /**
- * Attempt to sync every eligible capture.
+ * Attempt to sync every eligible item.
  *
  * Concurrent calls coalesce into one more pass rather than being dropped:
  * returning early would lose the capture that triggered it, since the app
@@ -160,6 +330,39 @@ export function flush(): Promise<void> {
   return inFlight;
 }
 
+/** null on success; a message on failure. */
+async function send(item: PendingOp): Promise<string | null> {
+  if (item.op.kind === "capture") {
+    const { error } = await supabase
+      .from("captures")
+      .insert({
+        id: item.id,
+        user_id: item.userId,
+        raw_text: item.op.raw_text,
+        created_at: item.op.created_at,
+      })
+      .abortSignal(timeout());
+
+    // 23505 is a unique violation: this row already landed on an earlier
+    // attempt whose response we never saw. That is success, not failure.
+    if (!error || error.code === "23505") return null;
+    return error.message;
+  }
+
+  // An update is idempotent by construction — replaying "status = done" is a
+  // no-op — so there is no equivalent of the 23505 case to special-case here.
+  // user_id is filtered as well as the id: RLS enforces it, but a client that
+  // asks only for what it owns cannot be the thing that discovers RLS is off.
+  const { error } = await supabase
+    .from("commitments")
+    .update(item.op.patch)
+    .eq("id", item.op.commitmentId)
+    .eq("user_id", item.userId)
+    .abortSignal(timeout());
+
+  return error ? error.message : null;
+}
+
 async function run(): Promise<void> {
   try {
     const now = Date.now();
@@ -167,24 +370,13 @@ async function run(): Promise<void> {
 
     for (const item of due) {
       try {
-        const { error } = await supabase
-          .from("captures")
-          .insert({
-            id: item.id,
-            user_id: item.userId,
-            raw_text: item.raw_text,
-            created_at: item.created_at,
-          })
-          .abortSignal(timeout());
-
-        // 23505 is a unique violation: this row already landed on an earlier
-        // attempt whose response we never saw. That is success, not failure.
-        if (!error || error.code === "23505") {
+        const failure = await send(item);
+        if (failure === null) {
           await mutate((items) => items.filter((i) => i.id !== item.id));
-          void triage(item.id);
+          if (item.op.kind === "capture") void triage(item.id);
           continue;
         }
-        await recordFailure(item.id, error.message);
+        await recordFailure(item.id, failure);
       } catch (err) {
         await recordFailure(item.id, err instanceof Error ? err.message : String(err));
       }
@@ -271,7 +463,7 @@ async function sweepQueued(): Promise<void> {
  * connectivity returns without firing one.
  */
 export function startOutboxWatcher(): () => void {
-  const onOnline = () => void flush();
+  const onOnline = () => void clearBackoff().then(flush);
   const onVisible = () => {
     if (document.visibilityState === "visible") void flush();
   };

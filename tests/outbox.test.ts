@@ -7,15 +7,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * dead-lettering, atomicity — not anything Supabase does.
  */
 
-type InsertResult = { error: { code?: string; message: string } | null };
+type Result = { error: { code?: string; message: string } | null };
 
-const insert = vi.fn<() => Promise<InsertResult>>();
+const insert = vi.fn<() => Promise<Result>>();
+const patch = vi.fn<() => Promise<Result>>();
 const invoke = vi.fn(async () => ({ data: null, error: null }));
 
 vi.mock("../apps/web/src/lib/supabase", () => ({
   supabase: {
     from: (table: string) => ({
       insert: () => ({ abortSignal: () => insert() }),
+      update: () => ({ eq: () => ({ eq: () => ({ abortSignal: () => patch() }) }) }),
       select: () => ({
         eq: () => ({
           lt: () => ({
@@ -32,16 +34,18 @@ vi.mock("../apps/web/src/lib/supabase", () => ({
   },
 }));
 
-const { backoffFor, enqueue, flush, peek, retryItem } = await import(
-  "../apps/web/src/lib/outbox"
-);
-const { clear } = await import("idb-keyval");
+const OUTBOX = await import("../apps/web/src/lib/outbox");
+const { backoffFor, captureOps, enqueue, flush, peek, pendingPatch, retryItem } = OUTBOX;
+const { clear, update } = await import("idb-keyval");
 
 const USER = "11111111-1111-1111-1111-111111111111";
+const KEY = "reeve.outbox.v2";
 
 beforeEach(async () => {
   await clear();
   insert.mockReset();
+  patch.mockReset();
+  patch.mockResolvedValue({ error: null });
   invoke.mockReset();
   invoke.mockResolvedValue({ data: null, error: null });
 });
@@ -89,6 +93,42 @@ describe("backoff", () => {
     expect(backoffFor(50)).toBeLessThanOrEqual(5 * 60_000 * 1.25);
   });
 
+  it("is cleared when connectivity returns", async () => {
+    // Found by the P1-F2 offline end-to-end test, which sat at "open" for the
+    // full sixty seconds after reconnecting. Every failed flush while offline
+    // widens the wait, so a long enough outage pushes the next attempt five
+    // minutes out — and the queue then does nothing at the exact moment it
+    // finally could. Backoff is for a failing server, not for a dead radio.
+    insert.mockResolvedValue({ error: { message: "offline" } });
+    await enqueue("written in a basement", USER);
+    await flush();
+    expect((await peek())[0]!.nextAttemptAt).toBeGreaterThan(Date.now());
+
+    await OUTBOX.clearBackoff();
+    expect((await peek())[0]!.nextAttemptAt).toBe(0);
+
+    insert.mockResolvedValue({ error: null });
+    await flush();
+    expect(await peek()).toHaveLength(0);
+  });
+
+  it("does not revive a dead-lettered item", async () => {
+    // Ten consecutive failures is not a connectivity story, and clearing it
+    // here would make the dead-letter state unreachable.
+    insert.mockResolvedValue({ error: { message: "poison" } });
+    await enqueue("poison", USER);
+    // Settle the flush enqueue() fires, or its recordFailure lands after the
+    // update below and overwrites it.
+    await flush();
+    await update<Array<Record<string, unknown>>>(KEY, (items) =>
+      (items ?? []).map((x) => ({ ...x, deadLettered: true, nextAttemptAt: 9_999_999_999_999 })),
+    );
+
+    await OUTBOX.clearBackoff();
+    expect((await peek())[0]!.nextAttemptAt).toBe(9_999_999_999_999);
+    expect((await peek())[0]!.deadLettered).toBe(true);
+  });
+
   it("holds an item back until it is due", async () => {
     insert.mockResolvedValue({ error: { message: "boom" } });
     await enqueue("failing", USER);
@@ -109,8 +149,7 @@ describe("dead-lettering", () => {
 
     // Drive it past the ceiling, clearing the backoff each time.
     for (let i = 0; i < 12; i++) {
-      const { update } = await import("idb-keyval");
-      await update<Array<{ nextAttemptAt: number }>>("reeve.outbox.v1", (items) =>
+      await update<Array<{ nextAttemptAt: number }>>(KEY, (items) =>
         (items ?? []).map((x) => ({ ...x, nextAttemptAt: 0 })),
       );
       await flush();
@@ -129,8 +168,7 @@ describe("dead-lettering", () => {
   it("an explicit retry revives it", async () => {
     insert.mockResolvedValue({ error: { message: "poison" } });
     const item = await enqueue("poison item", USER);
-    const { update } = await import("idb-keyval");
-    await update<Array<Record<string, unknown>>>("reeve.outbox.v1", (items) =>
+    await update<Array<Record<string, unknown>>>(KEY, (items) =>
       (items ?? []).map((x) => ({ ...x, deadLettered: true, attempts: 10 })),
     );
 
@@ -163,3 +201,46 @@ describe("concurrency", () => {
     expect(ids.includes(second.id) || landed >= 2, "the second capture survived").toBe(true);
   });
 });
+
+describe("commitment ops", () => {
+  const COMMITMENT = "22222222-2222-2222-2222-222222222222";
+
+  it("syncs a patch and clears it", async () => {
+    await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "done" });
+    await flush();
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(await peek()).toHaveLength(0);
+  });
+
+  it("survives a failure and stays queued", async () => {
+    patch.mockResolvedValue({ error: { message: "offline" } });
+    await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "done" });
+    await flush();
+    expect(await peek()).toHaveLength(1);
+    // The optimistic overlay reads from the queue, so an unsynced change is
+    // still the thing the Due view shows after a cold reload.
+    expect(pendingPatch(await peek(), COMMITMENT)).toEqual({ status: "done" });
+  });
+
+  it("merges two changes to the same commitment into one write", async () => {
+    // Marking done then dropping must not queue two updates that race.
+    patch.mockResolvedValue({ error: { message: "offline" } });
+    await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "done", completed_at: "x" });
+    await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "dropped" });
+
+    const queued = await peek();
+    expect(queued).toHaveLength(1);
+    expect(pendingPatch(queued, COMMITMENT)).toEqual({ status: "dropped", completed_at: "x" });
+  });
+
+  it("does not appear on the capture screen's queue", async () => {
+    patch.mockResolvedValue({ error: { message: "offline" } });
+    insert.mockResolvedValue({ error: { message: "offline" } });
+    await enqueue("a thought", USER);
+    await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "done" });
+    expect(captureOps(await peek())).toHaveLength(1);
+  });
+});
+
+// The v1 -> v2 migration runs once per module instance, so it gets its own
+// file: see tests/outbox-migration.test.ts.

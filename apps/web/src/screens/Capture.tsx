@@ -3,7 +3,7 @@ import { ArrowUp, CloudOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { enqueue, flush, retryItem, subscribe, type PendingCapture } from "@/lib/outbox";
+import { captureOps, enqueue, flush, retryItem, subscribe, type PendingOp } from "@/lib/outbox";
 import { clearDraft, readDraft, writeDraft } from "@/lib/draft";
 import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,8 @@ function nowHeader(): Header {
  */
 export default function Capture({ userId }: { userId: string }) {
   const [text, setText] = useState(readDraft);
-  const [pending, setPending] = useState<PendingCapture[]>([]);
+  /** Captures only. A commitment syncing has nothing to do with this screen. */
+  const [pending, setPending] = useState<PendingOp[]>([]);
   const [saving, setSaving] = useState(false);
   const online = useOnline();
   const [header, setHeader] = useState(nowHeader);
@@ -43,7 +44,7 @@ export default function Capture({ userId }: { userId: string }) {
     writeDraft(text);
   }, [text]);
 
-  useEffect(() => subscribe(setPending), []);
+  useEffect(() => subscribe((items) => setPending(captureOps(items))), []);
 
   // Recompute on resume: an installed PWA is not reloaded across a day
   // boundary, so a render-time value goes stale and starts lying.

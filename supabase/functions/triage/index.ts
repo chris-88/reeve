@@ -6,7 +6,9 @@ import {
   TriageResult,
   UNSORTED_AREA_ID,
   buildTriageSystemPrompt,
+  commitmentFingerprint,
   costUsd,
+  dueAtFromDate,
   EMPTY_ENTITIES,
 } from "../../../packages/shared/src/index.ts";
 
@@ -103,9 +105,16 @@ Deno.serve(async (req) => {
     return json({ status: capture.status, claimed_by_other: true });
   }
 
-  const { data: areaRows } = await db.from("areas").select("*").order("sort_order");
+  // Scoped by owner explicitly. This client holds the secret key and bypasses
+  // RLS, so 0003's owner-scoped policy does nothing here — without the filter
+  // the prompt would be built from every account's areas.
+  const { data: areaRows } = await db
+    .from("areas")
+    .select("*")
+    .eq("owner_id", capture.user_id)
+    .order("sort_order");
   const areas = (areaRows ?? []).map((a) => Area.parse(a));
-  const system = buildTriageSystemPrompt(areas);
+  const system = buildTriageSystemPrompt(areas, { capturedAt: capture.created_at });
   const validIds = new Set(areas.filter((a) => a.active).map((a) => a.id));
 
   const started = Date.now();
@@ -122,6 +131,16 @@ Deno.serve(async (req) => {
     // Guard against a hallucinated area id. Filing it wrong is recoverable;
     // writing a dangling foreign key is not.
     const areaId = validIds.has(result.area_id) ? result.area_id : UNSORTED_AREA_ID;
+
+    // Before the capture reaches 'done', not after. A capture that says it is
+    // filed while its commitments are still only in the model's response is a
+    // partial write, and nothing would ever come back for the remainder.
+    await writeCommitments(db, {
+      captureId,
+      userId: capture.user_id,
+      areaId,
+      commitments: result.commitments,
+    });
 
     await db
       .from("captures")
@@ -154,6 +173,50 @@ Deno.serve(async (req) => {
     return json({ status: attempts >= MAX_ATTEMPTS ? "failed" : "queued", error: message }, 500);
   }
 });
+
+/**
+ * Persist the extracted commitments.
+ *
+ * Insert-if-absent on the fingerprint, never delete-and-reinsert. Re-triage is
+ * a legitimate and increasingly common event — the cron sweeper does it, and
+ * so does the retry button — and a row the user has since completed, dropped
+ * or reworded must survive one. The model's later opinion about a promise does
+ * not outrank the user's record of what they did about it.
+ */
+async function writeCommitments(
+  db: SupabaseClient,
+  o: {
+    captureId: string;
+    userId: string;
+    areaId: string;
+    commitments: TriageResult["commitments"];
+  },
+): Promise<void> {
+  const rows = await Promise.all(
+    o.commitments
+      .map((c) => ({ ...c, text: c.text.trim() }))
+      .filter((c) => c.text.length > 0)
+      .map(async (c) => ({
+        user_id: o.userId,
+        capture_id: o.captureId,
+        area_id: o.areaId,
+        text: c.text,
+        due_text: c.due_text?.trim() || null,
+        // A phrase the model could not resolve still belongs on the list.
+        due_at: dueAtFromDate(c.due_at),
+        fingerprint: await commitmentFingerprint(o.captureId, c.text),
+      })),
+  );
+  if (rows.length === 0) return;
+
+  const { error } = await db
+    .from("commitments")
+    .upsert(rows, { onConflict: "fingerprint", ignoreDuplicates: true });
+
+  // Thrown, not swallowed: the caller's catch marks the capture for retry, and
+  // the upsert above is safe to replay.
+  if (error) throw new Error(`commitments: ${error.message}`);
+}
 
 /** One model call, validated. Retries once with the validation error appended. */
 async function triage(opts: {

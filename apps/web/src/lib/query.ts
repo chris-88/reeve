@@ -43,9 +43,16 @@ export const persister = createAsyncStoragePersister({
  */
 export const cacheBuster = __BUILD_ID__;
 
-/** Only these are ever written to disk. Never anything derived from auth. */
+/**
+ * Only these are ever written to disk. Never anything derived from auth.
+ *
+ * "commitments" is here for the same reason "captures" is: the Due view has to
+ * render on a building site with no signal, and a query that has nothing
+ * cached falls through to an empty state that reads as "you owe nobody
+ * anything".
+ */
 export const shouldPersistQuery = (key: readonly unknown[]): boolean =>
-  key[0] === "captures" || key[0] === "areas";
+  key[0] === "captures" || key[0] === "areas" || key[0] === "commitments";
 
 /** Called on sign-out: cached rows must not survive into another session. */
 export async function purgeQueryCache(): Promise<void> {

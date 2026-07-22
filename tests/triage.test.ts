@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_ENTITIES,
   MODELS,
+  TIMEZONE,
   TRIAGE_JSON_SCHEMA,
   TriageResult,
   UNSORTED_AREA_ID,
@@ -11,6 +12,7 @@ import {
 } from "../packages/shared/src/index.ts";
 
 const area = (over: Partial<Area> & Pick<Area, "id">): Area => ({
+  owner_id: "11111111-1111-1111-1111-111111111111",
   label: "Label",
   classifier_hint: "Hint.",
   colour: "#fff",
@@ -18,6 +20,9 @@ const area = (over: Partial<Area> & Pick<Area, "id">): Area => ({
   active: true,
   ...over,
 });
+
+/** A Thursday, so "next Tuesday" and a bare weekday both have a real answer. */
+const CAPTURED_AT = "2026-07-23T09:15:00.000Z";
 
 describe("TRIAGE_JSON_SCHEMA", () => {
   /**
@@ -49,9 +54,9 @@ describe("TRIAGE_JSON_SCHEMA", () => {
     expect(TRIAGE_JSON_SCHEMA).not.toHaveProperty("$schema");
   });
 
-  it("requires the four fields the Edge Function writes", () => {
+  it("requires the five fields the Edge Function writes", () => {
     expect((TRIAGE_JSON_SCHEMA as { required: string[] }).required).toEqual(
-      expect.arrayContaining(["area_id", "title", "summary", "entities"]),
+      expect.arrayContaining(["area_id", "title", "summary", "entities", "commitments"]),
     );
   });
 });
@@ -62,6 +67,9 @@ describe("TriageResult", () => {
     title: "Bins out Tuesday",
     summary: "The bins go out on Tuesday.",
     entities: { ...EMPTY_ENTITIES, dates: ["Tuesday"] },
+    commitments: [
+      { text: "Put the bins out", due_text: "Tuesday", due_at: "2026-07-28" },
+    ],
   };
 
   it("accepts well-formed output", () => {
@@ -70,7 +78,7 @@ describe("TriageResult", () => {
 
   it("accepts entirely empty entities", () => {
     // Empty arrays are correct output, not a failure to extract.
-    const r = TriageResult.safeParse({ ...valid, entities: EMPTY_ENTITIES });
+    const r = TriageResult.safeParse({ ...valid, entities: EMPTY_ENTITIES, commitments: [] });
     expect(r.success).toBe(true);
   });
 
@@ -83,6 +91,26 @@ describe("TriageResult", () => {
     const { summary: _omitted, ...partial } = valid;
     expect(TriageResult.safeParse(partial).success).toBe(false);
   });
+
+  it("accepts a commitment with no date at all", () => {
+    // P1-F1.5: "I'll sort the insurance at some point" is a real obligation.
+    // Dropping it because it has no date is the failure mode routing to
+    // 'unsorted' exists to avoid, in a different costume.
+    const r = TriageResult.safeParse({
+      ...valid,
+      commitments: [{ text: "Sort the insurance", due_text: null, due_at: null }],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a commitment missing due_at", () => {
+    // Structured outputs requires every property; null is how absence is said.
+    const r = TriageResult.safeParse({
+      ...valid,
+      commitments: [{ text: "Sort the insurance", due_text: null }],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("buildTriageSystemPrompt", () => {
@@ -92,25 +120,43 @@ describe("buildTriageSystemPrompt", () => {
     area({ id: UNSORTED_AREA_ID, label: "Unsorted", sort_order: 999 }),
   ];
 
+  const prompt = () => buildTriageSystemPrompt(areas, { capturedAt: CAPTURED_AT });
+
   it("includes active areas with their hints", () => {
-    const p = buildTriageSystemPrompt(areas);
-    expect(p).toContain("work (Work): Anything job related.");
+    expect(prompt()).toContain("work (Work): Anything job related.");
   });
 
   it("excludes inactive areas", () => {
     // An inactive area must not be offered, or captures land somewhere unusable.
-    expect(buildTriageSystemPrompt(areas)).not.toContain("retired");
+    expect(prompt()).not.toContain("retired");
   });
 
   it("instructs the model to prefer unsorted over guessing", () => {
-    const p = buildTriageSystemPrompt(areas);
-    expect(p).toContain(UNSORTED_AREA_ID);
-    expect(p.toLowerCase()).toContain("not a failure state");
+    expect(prompt()).toContain(UNSORTED_AREA_ID);
+    expect(prompt().toLowerCase()).toContain("not a failure state");
   });
 
   it("orders areas by sort_order", () => {
-    const p = buildTriageSystemPrompt(areas);
+    const p = prompt();
     expect(p.indexOf("work (Work)")).toBeLessThan(p.indexOf(`${UNSORTED_AREA_ID} (Unsorted)`));
+  });
+
+  it("states the capture's own date, with its weekday", () => {
+    // P1-F1.4. Without this "Thursday" is unresolvable, and the model was
+    // previously being asked to extract dates it had no way to anchor.
+    const p = prompt();
+    expect(p).toContain("2026-07-23");
+    expect(p).toContain("Thursday");
+    expect(p).toContain(TIMEZONE);
+  });
+
+  it("anchors on the capture, not on now", () => {
+    // A capture swept off the queue days late must resolve against the day it
+    // was written. Using the current date here would silently misdate anything
+    // the cron sweeper picks up.
+    const p = buildTriageSystemPrompt(areas, { capturedAt: "2026-01-02T23:30:00.000Z" });
+    expect(p).toContain("2026-01-02");
+    expect(p).not.toContain("2026-07-23");
   });
 });
 
