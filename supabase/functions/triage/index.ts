@@ -10,6 +10,7 @@ import {
   costUsd,
   dueAtFromDate,
   EMPTY_ENTITIES,
+  reportToSentry,
 } from "../../../packages/shared/src/index.ts";
 
 const MAX_ATTEMPTS = 3;
@@ -170,6 +171,18 @@ Deno.serve(async (req) => {
       .eq("id", captureId);
 
     await log(db, { userId: capture.user_id, captureId, usage, started, ok: false, error: message });
+
+    // F7.2. capture_id and attempt on every event, because "triage failed" on
+    // its own tells you nothing you can act on — the question is always which
+    // capture, and whether it is about to run out of attempts.
+    await reportToSentry(Deno.env.get("SENTRY_DSN"), {
+      message: `triage failed: ${message}`,
+      level: attempts >= MAX_ATTEMPTS ? "error" : "warning",
+      tags: { step: "triage", exhausted: String(attempts >= MAX_ATTEMPTS) },
+      // F7.4: the capture's id, never its words.
+      extra: { capture_id: captureId, attempt: attempts, max_attempts: MAX_ATTEMPTS },
+    });
+
     return json({ status: attempts >= MAX_ATTEMPTS ? "failed" : "queued", error: message }, 500);
   }
 });

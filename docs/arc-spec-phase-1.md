@@ -26,9 +26,9 @@ Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
 | 1 | P0 | **P1-F2** The Due view | ✅ Done |
 | 2 | P1 | **P1-F3** Corrections report | ✅ Done |
 | 3 | P1 | **P1-F4** Cross-capture retrieval | ✅ Done |
-| 4 | P0 | **P1-F5** Cost ceiling | ⬜ Not started |
-| 4 | P1 | **P1-F6** The daily brief | ⬜ Not started — unblocked, needs P1-F5 first |
-| 5 | P0 | **P1-F7** Change requests | ⬜ Not started — schema is now migration `0009` |
+| 4 | P0 | **P1-F5** Cost ceiling | ✅ Done |
+| 4 | P1 | **P1-F6** The daily brief | ✅ Done |
+| 5 | P0 | **P1-F7** Change requests | ⬜ Not started — its schema is now migration `0012` |
 | 5 | P0 | **P1-F8** The drafting agent | ⬜ Not started |
 | 5 | P0 | **P1-F9** Filing, and the handoff | ⬜ Not started — unblocked |
 | 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started — unblocked |
@@ -62,11 +62,11 @@ Reviewed 22 July 2026. Two of the four are now cleared.
 | P1-F9 filing | Fine-grained GitHub PAT, single repository, `issues: write` and nothing else | ⏳ Chris provisioning |
 | P1-F10 webhook | A webhook signing secret | ⏳ Chris provisioning |
 | P1-F12.2 | Branch protection on `main` with the CI gates required | ✅ Applied — `check` and `e2e` required, force-push and deletion blocked, direct push retained for admins |
-| Hardening F7 | A Sentry DSN | ⏳ Chris provisioning. Hard prerequisite for P1-F5.2, which is specified to alert and has nowhere to alert |
+| Hardening F7 | A Sentry DSN | ✅ **Built.** F7.1–F7.7 done; the stuck-capture alert is verified reaching Sentry |
 
-**Nothing in Stage 5 is blocked on a decision any more — only on credentials.**
-P1-F7, P1-F8, P1-F12 and P1-F13 need none of them and are the work to pick up
-first. P1-F5 needs none either, and gates everything scheduled.
+**Nothing is blocked at all any more.** Every credential is provisioned and
+verified in use. Stage 4 is complete; Stage 5 — P1-F7 through P1-F12 — is the
+whole of what remains, and none of it waits on anything.
 
 ### Verified against the acceptance criteria
 
@@ -91,6 +91,34 @@ Against the live project, not a fixture:
   hardening spec records applies here unchanged.
 - 63 unit tests and 7 end-to-end tests pass. Typecheck, lint and the secret
   scan are clean.
+
+### Stage 4, added 22 July
+
+- **P1-F5 refuses before it spends, and says so twice.** The ceiling is checked
+  ahead of the model call; a refusal writes an `agent_runs` row with `ok =
+  false` and `cost_usd = 0` — zero rather than null, because null means
+  "unpriced model" per F5.3 and would make a deliberate stop look like a
+  pricing gap. Windows are rolling rather than calendar: a calendar month
+  resets the budget at midnight on the 1st, which is exactly when a runaway
+  loop would get a second night. It fails **closed** — if the spend cannot be
+  read then there is no ceiling, and a missing brief is cheaper than the
+  alternative.
+- **The brief is silent when there is nothing to say.** Nothing owed and
+  nothing captured skips the model call and the notification entirely. A daily
+  notification that is usually empty is a notification that stops being read,
+  and P1-F6.8 already establishes that silence is an acceptable output.
+- **The context carries titles and commitment text, never `raw_text`.** The
+  brief has to name things Chris will recognise, which needs the commitment
+  itself; it does not need the dictated note behind it, so that never leaves
+  the database.
+- **Migration numbering, again.** `0009` went to the spend views and the
+  stuck-capture alert, `0010` to a fix, `0011` to briefs. Change requests are
+  now `0012`. This is the third collision — the number belongs in
+  `pnpm db:status`, not in a document.
+- **Two ceilings needed to be configurable without a deploy**, so they read
+  from function secrets (`REEVE_DAILY_CEILING_USD`,
+  `REEVE_MONTHLY_CEILING_USD`) and fall back to $1/day and $10/30 days. The
+  spec says "a configured ceiling" without saying where; this is where.
 
 ### Where this document was wrong, ambiguous or silent
 

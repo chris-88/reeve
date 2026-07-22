@@ -44,8 +44,8 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 | Document | Status |
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
-| `docs/arc-spec-phase-1.md` | **Stages 0–3 done. Stages 4–5 approved, unbuilt.** Stage 6 described but not approved |
-| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done **except F8.3**, which was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
+| `docs/arc-spec-phase-1.md` | **Stages 0–4 done. Stage 5 approved, unbuilt.** Stage 6 described but not approved |
+| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding** |
 | `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
@@ -55,11 +55,16 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 defects the spec did not predict, and where the document was wrong or silent.
 Read it before starting anything below.
 
-- **P1-F5 cost ceiling** is untouched and is a hard gate. Nothing built so far
-  runs unattended, so nothing needed it; it must land *with* the first
-  scheduled model call, not after.
-- **P1-F7 and P1-F8** — the `change_requests` schema and the drafting agent —
-  need no credential and can be built now.
+- **Stage 5 is all that is left**: P1-F7 through P1-F12, the loop from a
+  dictated thought to a merged pull request. Nothing blocks it. It is also the
+  only part of Phase 1 that writes outside the system, so P1-F7.2 and the §7
+  guardrails are not negotiable — a capture landing in the `reeve` area makes
+  it *eligible*, never filed.
+- **P1-F5 and P1-F6 are done and running.** A brief is dispatched by `pg_cron`
+  at 05:10 UTC to every account with a capture in the last 30 days; the ceiling
+  is checked before the model call and refuses by writing an `agent_runs` row
+  and alerting. Ceilings are function secrets — `REEVE_DAILY_CEILING_USD`,
+  `REEVE_MONTHLY_CEILING_USD` — defaulting to $1/day and $10/30 days.
 - **P1-F13 test isolation is done.** Both suites seed their own taxonomy and
   tear down unconditionally, CI fails if a `@reeve.test` account accumulates,
   and `migrate.mjs` now refuses a migration that rewrites existing rows unless
@@ -74,9 +79,6 @@ Read it before starting anything below.
   VAPID (three values), `GITHUB_ISSUES_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
   `SENTRY_DSN` / `VITE_SENTRY_DSN` / `SENTRY_AUTH_TOKEN`. Check before
   assuming one is missing.
-- **Hardening F7 (Sentry) is still not built**, and P1-F5.2 is specified to
-  alert. Build them together: a ceiling that refuses silently is a ceiling
-  nobody knows was hit.
 
 Web Push is built and deployed — `docs/arc-spec-web-push.md` §0 records what
 was verified and what was not. **Delivery has never been proven**: everything
@@ -134,6 +136,11 @@ pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
 pnpm triage:report                     # which classifier_hint to edit first
 ```
 
+Four cron jobs run in Postgres: `reeve-reap` and `reeve-sweep` every minute,
+`reeve-stuck-alert` every five, `reeve-daily-brief` at 05:10 UTC. Three read
+their configuration from Vault (`service_role_key`, `triage_function_url`,
+`brief_function_url`, `sentry_dsn`) because the migrations are public.
+
 `db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
 seeded without one is readable by nobody — a silent failure that looks like a
 broken app rather than a missing flag.
@@ -145,6 +152,7 @@ Supabase CLI and an access token:
 export SUPABASE_ACCESS_TOKEN=...        # from .env.local
 supabase functions deploy triage --project-ref <ref>
 supabase functions deploy send-push --project-ref <ref>
+supabase functions deploy brief --project-ref <ref>
 ```
 
 Function secrets are set the same way. Web Push needs three, not two — signing
@@ -162,6 +170,19 @@ supabase secrets set --project-ref <ref> \
 ## Things that cost hours
 
 Each of these was learned the expensive way. They are not visible in the code.
+
+**A shared module must not reach for one runtime's globals.**
+`packages/shared` compiles against ES2022 with no DOM, because it runs in the
+browser, in Deno and in Node. WinterCG globals it needs — `fetch`, `crypto`,
+`console` — are declared once in `src/globals.d.ts`. Anything runtime-specific,
+like reading a ceiling out of `Deno.env`, is passed in by the caller instead;
+`globalThis.Deno` typechecks in the shared package and fails in `apps/web`.
+
+**A migration that defines a function is not verified by applying it.**
+plpgsql does not parse the SQL inside a function body at creation time, so
+`min(id)` over a uuid column created cleanly and failed on the first cron run.
+`--dry-run` does not catch it either, because the statement never executes
+during the migration. **Call the function** after applying it.
 
 **The Supabase auth admin API 403s at random.** `createUser`, `listUsers` and
 `signInWithPassword` intermittently return `bad_jwt` — *"unrecognized JWT kid

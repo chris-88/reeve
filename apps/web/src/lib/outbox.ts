@@ -1,6 +1,7 @@
 import { del, get, update } from "idb-keyval";
 import type { CommitmentStatus } from "@reeve/shared";
 import { supabase } from "./supabase";
+import { report, trail } from "./observability";
 
 /**
  * Local-first mutation queue.
@@ -224,6 +225,7 @@ export async function enqueue(rawText: string, userId: string): Promise<PendingO
     op: { kind: "capture", raw_text: rawText.trim(), created_at: new Date().toISOString() },
   };
   await mutate((items) => [item, ...items]);
+  trail("capture enqueued", { id: item.id });
   void flush();
   return item;
 }
@@ -367,12 +369,14 @@ async function run(): Promise<void> {
   try {
     const now = Date.now();
     const due = (await read()).filter((i) => !i.deadLettered && i.nextAttemptAt <= now);
+    if (due.length > 0) trail("outbox flush", { due: due.length });
 
     for (const item of due) {
       try {
         const failure = await send(item);
         if (failure === null) {
           await mutate((items) => items.filter((i) => i.id !== item.id));
+          trail("outbox item synced", { id: item.id, kind: item.op.kind });
           if (item.op.kind === "capture") void triage(item.id);
           continue;
         }
@@ -398,6 +402,12 @@ async function recordFailure(id: string, message: string): Promise<void> {
     items.map((i) => {
       if (i.id !== id) return i;
       const attempts = i.attempts + 1;
+      if (attempts >= DEAD_LETTER_AFTER) {
+        // The one outbox event that means a capture is going nowhere without
+        // the user intervening. If anything here deserves an alert, it is this.
+        trail("outbox item dead-lettered", { id: i.id, kind: i.op.kind, attempts });
+        report(new Error("outbox item dead-lettered"), { id: i.id, kind: i.op.kind });
+      }
       return {
         ...i,
         attempts,
@@ -428,6 +438,7 @@ async function triage(captureId: string): Promise<void> {
     if (error) throw error;
   } catch (err) {
     console.error("[reeve] triage failed for", captureId, err);
+    report(err, { capture_id: captureId, step: "invoke" });
     // Recoverable: sweepQueued below and the server-side cron both retry.
   }
 }

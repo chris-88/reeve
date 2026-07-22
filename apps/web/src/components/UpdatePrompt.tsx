@@ -4,6 +4,7 @@ import { Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { peek } from "@/lib/outbox";
 import { readDraft } from "@/lib/draft";
+import { report, trail } from "@/lib/observability";
 
 /**
  * Offers a waiting update. Never applies one on its own.
@@ -20,9 +21,15 @@ export default function UpdatePrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_url, registration) {
+      // F7.5: a worker that never activates is the difference between an app
+      // that works in a car park and one that shows a browser error page.
+      trail("service worker registered", { active: !!registration?.active });
       // Check hourly. Without this an app left installed for weeks never
       // notices a deploy.
       if (registration) setInterval(() => void registration.update(), 60 * 60 * 1000);
+    },
+    onRegisterError(error) {
+      report(error);
     },
   });
 
@@ -64,6 +71,7 @@ export default function UpdatePrompt() {
             disabled={busy}
             onClick={() => {
               setBusy(true);
+              trail("service worker update applied");
               void updateServiceWorker(true);
             }}
           >

@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import path from "node:path";
 
 // Changes on every build; used to bust the persisted query cache so a schema
@@ -79,6 +80,30 @@ export default defineConfig({
         ],
       },
     }),
+    /**
+     * F7.3: upload sourcemaps, and only where there is a token to do it with.
+     *
+     * The org is in the **EU region**. sentry-cli and this plugin both default
+     * to sentry.io, which is US, and against an EU org that fails as "project
+     * not found" — a message that sends you hunting for a typo in the project
+     * slug. `url` is not optional here.
+     *
+     * Absent in a local build, so `pnpm build` needs no Sentry credentials.
+     */
+    ...(process.env.SENTRY_AUTH_TOKEN
+      ? [
+          sentryVitePlugin({
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            url: process.env.SENTRY_URL,
+            release: { name: BUILD_ID },
+            // deploy.yml strips .map from the Pages artefact after the build.
+            sourcemaps: { filesToDeleteAfterUpload: [] },
+            telemetry: false,
+          }),
+        ]
+      : []),
   ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   envDir: path.resolve(import.meta.dirname, "../.."),

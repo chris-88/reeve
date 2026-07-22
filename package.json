@@ -25,6 +25,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
+    "@sentry/vite-plugin": "^5.4.0",
     "@supabase/supabase-js": "^2.110.7",
     "dotenv": "^17.2.3",
     "eslint": "^10.7.0",

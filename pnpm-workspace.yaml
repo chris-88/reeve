@@ -3,4 +3,7 @@ packages:
   - "packages/*"
 allowBuilds:
   # esbuild's postinstall fetches its platform-specific binary. Required by Vite.
+  # Fetches the sentry-cli binary, which @sentry/vite-plugin uses to upload
+  # sourcemaps in CI. Without it the upload step fails at build time.
+  '@sentry/cli': true
   esbuild: true

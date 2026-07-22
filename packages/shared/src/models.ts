@@ -13,6 +13,11 @@
  */
 export const MODELS = {
   triage: "claude-haiku-4-5",
+  // P1-F6.4. Drafting is the documented use for the Sonnet tier, and a brief
+  // is drafting: it reads a day's worth of context and writes a paragraph a
+  // person will act on. Named here rather than hardcoded at the call site so
+  // that moving it a tier is one line.
+  brief: "claude-sonnet-5",
 } as const satisfies Record<string, string>;
 
 export type Step = keyof typeof MODELS;

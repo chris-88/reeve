@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import App from "./App";
 import { cacheBuster, persister, queryClient, shouldPersistQuery } from "@/lib/query";
+import { initObservability } from "@/lib/observability";
 import "./styles.css";
+
+// Before anything else renders, so a failure during the first paint is caught.
+initObservability();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

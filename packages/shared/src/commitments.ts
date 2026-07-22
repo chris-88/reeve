@@ -7,18 +7,6 @@
  * is the whole basis of P1-F1.3's idempotency.
  */
 
-/**
- * Web Crypto and TextEncoder are WinterCG globals — present in the browser,
- * in Deno and in Node — but this package's `lib` is deliberately ES2022 with
- * no DOM, because adding DOM here would put `window` and `document` in scope
- * for code that also runs in an Edge Function. Declaring exactly what is used
- * is narrower than the lib that would supply it.
- */
-declare const crypto: {
-  subtle: { digest(algorithm: string, data: ArrayBufferView): Promise<ArrayBuffer> };
-};
-declare const TextEncoder: { new (): { encode(input: string): Uint8Array } };
-
 /** ISO 8601 date, no time. */
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 

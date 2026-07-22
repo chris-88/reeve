@@ -23,7 +23,7 @@ change was made. All of them held.
 | P1 | **F4** Outbox reliability | ✅ Done |
 | P1 | **F5** Triage completion guarantee | ✅ Done |
 | P1 | **F6** Install and platform metadata | ✅ Done |
-| P1 | **F7** Observability | ⏸️ Deferred — needs a Sentry DSN |
+| P1 | **F7** Observability | ✅ Done |
 | P1 | **F8** CI gates | 🔶 Done except **F8.3** — see below |
 | P2 | **F9** Realtime resilience | ⬜ Not started |
 | P2 | **F10** Session lifecycle | ⬜ Not started |
