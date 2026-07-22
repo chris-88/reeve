@@ -24,7 +24,7 @@ change was made. All of them held.
 | P1 | **F5** Triage completion guarantee | ✅ Done |
 | P1 | **F6** Install and platform metadata | ✅ Done |
 | P1 | **F7** Observability | ⏸️ Deferred — needs a Sentry DSN |
-| P1 | **F8** CI gates | ✅ Done |
+| P1 | **F8** CI gates | 🔶 Done except **F8.3** — see below |
 | P2 | **F9** Realtime resilience | ⬜ Not started |
 | P2 | **F10** Session lifecycle | ⬜ Not started |
 | P2 | **F11** Smaller items | ⬜ Not started |
@@ -52,6 +52,23 @@ change was made. All of them held.
    *first* session after install had no offline capability at all.
 3. **A `<label>` with no associated control**, introduced while fixing F11.3
    and caught by `jsx-a11y` within minutes of F8.6 landing.
+
+### F8.3 was skipped, and it cost data
+
+Corrected 22 July 2026 by the spec owner.
+
+F8.3 requires *"a dedicated test project or a clearly-scoped set of test users
+— do not point CI at the project holding real captures."* Neither half was
+implemented, and F8 was marked done regardless. The consequences surfaced in
+the next round and are recorded in `docs/arc-spec-phase-1.md` §0: both suites
+were classifying fixtures against the owner's real `classifier_hint`s on every
+CI run, and a migration deriving ownership from row counts picked the test
+account — destroying two `corrected_area_id` signals unrecoverably.
+
+The decision has now been taken explicitly: **scoped accounts in one project**,
+specified as `arc-spec-phase-1.md` P1-F13, which supersedes F8.3. Treat that
+feature as the live requirement; this entry stands as the record of what
+marking a partially-met requirement "done" cost.
 
 ### Known gaps
 
@@ -487,6 +504,13 @@ and there is no instrument that would tell you it had been broken.
   maps to Sentry during CI. Do not deploy the `.map` files to Pages. Note that
   `scripts/check-bundle.mjs` already scans `.map` files, so the safety net
   covers them the moment they exist.
+
+  **The Sentry org is in the EU region.** `sentry-cli` and `@sentry/vite-plugin`
+  default to `sentry.io`, which is US, and against an EU org that fails as
+  "project not found" — a message that sends you looking at the project slug
+  rather than the region. The CI variables are already set: `SENTRY_ORG` is
+  `personal-kyp`, `SENTRY_PROJECT` is `reeve`, and **`SENTRY_URL` is
+  `https://de.sentry.io`**. Pass all three; do not rely on auto-detection.
 - **F7.4** Scrub `raw_text` from all telemetry. Captures are personal by
   definition — the same reasoning that put `areas.json` behind `.gitignore`
   applies with more force here. Send `capture_id` and never content.
@@ -496,11 +520,24 @@ and there is no instrument that would tell you it had been broken.
 - **F7.6** Define one alert: a capture in `queued` or `processing` for more
   than 15 minutes. That is the condition the user would otherwise discover
   weeks later, when they went looking for the thought.
+- **F7.7** **Teach `scripts/check-bundle.mjs` about Sentry's two credentials.**
+  Add `SENTRY_AUTH_TOKEN` to `SECRETS`, and `/sntrys_[A-Za-z0-9_-]{10,}/` to
+  `PATTERNS`. Neither exists today, and the existing JWT pattern does not cover
+  it: a Sentry organisation token is `sntrys_` followed by a single base64
+  blob with no dot-separated segments, so `\beyJ…\.…\.…` never matches.
+
+  This is not hypothetical. During credential provisioning the auth token was
+  pasted into `SENTRY_DSN`, one step away from `VITE_SENTRY_DSN` — and a
+  `VITE_`-prefixed variable is compiled into the bundle and published to
+  GitHub Pages. `pnpm build` would not have failed. The DSN is public by
+  design and the token is not, they are configured minutes apart, and the
+  script that exists to catch exactly this class of mistake was blind to it.
 
 #### Acceptance criteria
 
 - A forced client exception appears in Sentry with a symbolicated stack.
 - A forced Edge Function failure appears with `capture_id` attached.
+- A build with the auth token in any `VITE_` variable fails `check-bundle.mjs`.
 - No event payload contains capture text. Verify by inspection, not assumption.
 
 ---

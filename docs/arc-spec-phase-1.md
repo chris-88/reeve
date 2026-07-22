@@ -7,7 +7,7 @@ Owner: spec-owned. Implementation runs in separate sessions — where this
 document is wrong, ambiguous or silent, raise it against the spec rather than
 deciding it in the diff.
 Extends: `docs/spec.md` (Phase 0)
-Sibling: `docs/arc-spec-pwa-hardening.md`
+Siblings: `docs/arc-spec-pwa-hardening.md`, `docs/arc-spec-web-push.md`
 Audience: implementing dev team
 
 Feature IDs in this document are prefixed `P1-` and are numbered independently
@@ -27,13 +27,14 @@ Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
 | 2 | P1 | **P1-F3** Corrections report | ✅ Done |
 | 3 | P1 | **P1-F4** Cross-capture retrieval | ✅ Done |
 | 4 | P0 | **P1-F5** Cost ceiling | ⬜ Not started |
-| 4 | P1 | **P1-F6** The daily brief | ⛔ Blocked — needs Web Push |
-| 5 | P0 | **P1-F7** Change requests | ⬜ Not started |
+| 4 | P1 | **P1-F6** The daily brief | ⬜ Not started — unblocked, needs P1-F5 first |
+| 5 | P0 | **P1-F7** Change requests | ⬜ Not started — schema is now migration `0009` |
 | 5 | P0 | **P1-F8** The drafting agent | ⬜ Not started |
-| 5 | P0 | **P1-F9** Filing, and the handoff | ⛔ Blocked — needs a GitHub token |
-| 5 | P1 | **P1-F10** Closing the loop | ⛔ Blocked — webhook secret, Web Push |
+| 5 | P0 | **P1-F9** Filing, and the handoff | ⬜ Not started — unblocked |
+| 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started — unblocked |
 | 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started |
-| 5 | P0 | **P1-F12** Guardrails | ⬜ Not started |
+| 5 | P0 | **P1-F12** Guardrails | 🔶 F12.2 done (branch protection); rest not started |
+| 0 | P0 | **P1-F13** Test isolation | ✅ Done |
 | 6 | — | Approval ledger | 🚫 Not approved. Described only |
 
 Priorities are **within a stage**, not across the document. §10 carries the
@@ -53,17 +54,19 @@ sequencing and the reasoning behind it.
 
 ### What blocks Stages 4 and 5
 
-Three of these are Chris's to unblock; none can be worked around in code.
+Reviewed 22 July 2026. Two of the four are now cleared.
 
-| Blocked | Needs | Who |
+| Blocked | Needs | Status |
 |---|---|---|
-| P1-F6 delivery (F6.7) | Web Push: VAPID keys, and the service-worker handlers `docs/arc-spec-pwa-hardening.md` §4 defers | Chris, then a session |
-| P1-F9 filing | A fine-grained GitHub PAT, single repository, `issues: write` and nothing else | Chris |
-| P1-F10 webhook | A webhook signing secret | Chris |
-| P1-F12.2 | Branch protection on `main` with the CI gates required | Chris |
+| P1-F6 delivery (F6.7) | Web Push | ✅ **Built and deployed** — `docs/arc-spec-web-push.md`. Delivery unproven until WP-F6.3, a real iPhone |
+| P1-F9 filing | Fine-grained GitHub PAT, single repository, `issues: write` and nothing else | ⏳ Chris provisioning |
+| P1-F10 webhook | A webhook signing secret | ⏳ Chris provisioning |
+| P1-F12.2 | Branch protection on `main` with the CI gates required | ✅ Applied — `check` and `e2e` required, force-push and deletion blocked, direct push retained for admins |
+| Hardening F7 | A Sentry DSN | ⏳ Chris provisioning. Hard prerequisite for P1-F5.2, which is specified to alert and has nowhere to alert |
 
-P1-F7 (the `change_requests` schema) and P1-F8 (the drafting agent) need none
-of the above and could be built before the token exists.
+**Nothing in Stage 5 is blocked on a decision any more — only on credentials.**
+P1-F7, P1-F8, P1-F12 and P1-F13 need none of them and are the work to pick up
+first. P1-F5 needs none either, and gates everything scheduled.
 
 ### Verified against the acceptance criteria
 
@@ -274,23 +277,84 @@ controls.
 - **P1-F0.1** Confirm whether new sign-ups are enabled on the Supabase project.
   If they are and they need not be, disable them today. This is a
   configuration change and is independent of everything below.
-- **P1-F0.2** Add `owner_id uuid references auth.users(id)` to `areas`, in
-  migration `0002`.
-- **P1-F0.3** Replace `areas_read` with an owner-scoped policy. Retain a shared
-  read path only for genuinely global rows if any are introduced; `unsorted` is
-  the only candidate and duplicating it per user is simpler than a special
-  case.
+- **P1-F0.2** Add `owner_id uuid references auth.users(id)` to `areas`. *Built
+  as `0003_areas_ownership.sql` — `0002` was taken and its checksum is pinned.*
+- **P1-F0.3** Replace `areas_read` with an owner-scoped policy, and duplicate
+  `unsorted` per user rather than special-casing a shared row. **This requires
+  re-keying `areas` on `(owner_id, id)`** — `id` was the primary key, so two
+  accounts could not otherwise hold the same slug. `captures.area_id` and
+  `corrected_area_id` become composite foreign keys with it, which is the
+  better half of the change: filing into another account's area is then refused
+  by the schema rather than by a check someone can forget to write.
 - **P1-F0.4** Update `scripts/seed-areas.mjs` to require an owner and refuse to
   seed without one.
 - **P1-F0.5** Extend `tests/rls.test.ts` with the case it currently lacks: Bob
   cannot read Alice's areas. The existing suite covers `captures` and
   `agent_runs` properly and is the right place for this.
+- **P1-F0.6** **Owner-scope the Edge Function's own reads.**
+  `supabase/functions/triage` loads areas through the service-role client,
+  which bypasses RLS entirely — so scoping the policy alone would leave that
+  query reading every account's hints. Filter on `owner_id` explicitly, the
+  same discipline P1-F4.4 requires and for the same reason.
+- **P1-F0.7** **A migration must never derive ownership from data.** The
+  backfill that assigned existing rows an owner picked the account with the
+  most captures, which was the *test* account — it held 24 fixture rows against
+  the owner's 5. Eight real areas were reassigned and two `corrected_area_id`
+  signals were destroyed unrecoverably. Any future backfill takes the owner as
+  an explicit parameter, refuses to run without it, and prints what it will
+  touch before touching it. See P1-F13.
 
 #### Acceptance criteria
 
 - A second authenticated account sees no areas belonging to the first, and the
   inbox for that account renders without error.
 - `tests/rls.test.ts` fails if the policy is reverted.
+
+### P1-F13 — Test isolation
+
+**Priority:** P0 · **Decided 22 July 2026:** scoped test accounts in the live
+project. A separate Supabase project was considered and not taken.
+
+Hardening F8.3 already required this and was marked done without it:
+
+> They hit the real Supabase project, so they need a dedicated test project or
+> a clearly-scoped set of test users — do not point CI at the project holding
+> real captures.
+
+Both halves of that requirement were skipped, and it cost the only
+irrecoverable data loss this project has had. The chosen option is the second
+half — scoped accounts, one project — so the requirements below exist to make
+it actually hold, because "scoped" was nominally true before and did not help.
+
+#### Requirements
+
+- **P1-F13.1** Every test account uses the `@reeve.test` domain, and that
+  convention is the definition of a test account everywhere it matters.
+- **P1-F13.2** Every suite seeds its own invented taxonomy and never reads the
+  owner's `classifier_hint`s. This was defect 5: both suites were classifying
+  fixtures against the eight real hints, on every CI run — the exact exposure
+  P1-F0 exists to close, running in CI.
+- **P1-F13.3** Every suite deletes its captures, commitments and agent runs in
+  teardown, on success and on failure. Fixtures were being triaged at real
+  cost and accumulating.
+- **P1-F13.4** **Migrations are the hole this option leaves open**, and P1-F0.7
+  is the rule that closes it: no migration derives ownership, or any other
+  scoping, from row counts or from data. The backfill that caused the loss was
+  a migration, and migrations do not respect test scoping by construction.
+- **P1-F13.5** A guard in CI: fail the run if a `@reeve.test` account holds
+  more than a threshold of captures at the end of a suite. Accumulation is the
+  early symptom of every failure in this class, and it is silent otherwise.
+- **P1-F13.6** `scripts/migrate.mjs` prints the affected row count and requires
+  confirmation before applying a migration that writes to existing rows. A
+  dry-run flag that shows the same without applying.
+
+#### The residual risk, stated plainly
+
+One project means a destructive migration can still reach real captures. That
+is accepted, and P1-F13.4 and P1-F13.6 are the whole mitigation. If a second
+incident of this class occurs, the decision should be revisited rather than
+patched — the separate project exists precisely for this and costs nothing but
+the effort of keeping two schemas in step.
 
 ---
 
@@ -312,7 +376,7 @@ joined. *"What did I say I would do this week?"* currently requires fetching
 every capture and reducing in JavaScript. The single most valuable thing the
 model extracts is stored in the least usable available shape.
 
-#### Schema — migration `0003_commitments.sql`
+#### Schema — built as migration `0004_commitments.sql`
 
 ```sql
 create type commitment_status as enum ('open', 'done', 'dropped');
@@ -363,7 +427,12 @@ create index commitments_by_capture on commitments (capture_id);
   "Thursday" is therefore unresolvable. Inject the capture's `created_at` and
   the `Europe/Dublin` timezone into the system prompt, and extend
   `TriageResult` so each commitment carries both the verbatim phrase and a
-  resolved ISO date where one can be determined.
+  resolved ISO date where one can be determined. **Structured commitments live
+  at the top level of `TriageResult`, not inside `entities`** — `entities` is
+  also the persisted jsonb the capture sheet renders, and it stays a stable
+  display contract of people, dates, amounts and orgs. The reference date is
+  the capture's own `created_at`, never `now()`: a capture swept off the queue
+  three days late must still resolve "Thursday" against the day it was said.
 - **P1-F1.5** An unresolvable date is not a failure. A commitment with
   `due_at IS NULL` and a populated `due_text` is valid and must be surfaced,
   not discarded — the same principle that routes an unplaceable capture to
@@ -406,8 +475,13 @@ generate the usage that earns everything after it.
 - **P1-F2.3** Every mutation goes through the same durable, offline-tolerant
   path as capture. Reuse the outbox from hardening F4 rather than writing a
   second sync mechanism — a second one will diverge.
-- **P1-F2.4** Optimistic updates with rollback on failure. Marking something
-  done must feel instant; the network is still not a given.
+- **P1-F2.4** Optimistic updates, **laid over the server rows rather than
+  rolled back on failure.** Marking something done must feel instant, and it
+  must also survive. An earlier draft of this requirement said "rollback on
+  failure", which contradicts F2.3: the outbox's entire purpose is that a write
+  survives until it lands, and reverting a tap made hours earlier in a field
+  with no signal is exactly the data loss it exists to prevent. A queued change
+  survives a cold launch; one that cannot sync is surfaced, never reverted.
 - **P1-F2.5** Each commitment links back to its source capture. The raw text is
   the context, and a commitment read without it is frequently ambiguous.
 - **P1-F2.6** Editing a commitment's text or due date sets `origin = 'user'`.
@@ -678,7 +752,10 @@ bigger" and "why is the word count still there" captured across three days are
 one ticket, not three. Filing them separately produces noise that has to be
 reconciled by hand — which is the work this stage exists to remove.
 
-#### Schema — migration `0004_change_requests.sql`
+#### Schema — migration `0008_change_requests.sql`
+
+*Migrations `0001`–`0007` are applied and their checksums are pinned by
+`scripts/migrate.mjs`. Stage 5 starts at `0008`.*
 
 ```sql
 create type change_request_status as enum (

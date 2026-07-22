@@ -45,7 +45,8 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
 | `docs/arc-spec-phase-1.md` | **Stages 0–3 done. Stages 4–5 approved, unbuilt.** Stage 6 described but not approved |
-| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
+| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done **except F8.3**, which was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
+| `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
 ### Phase 1 — what is left
@@ -59,17 +60,33 @@ Read it before starting anything below.
   scheduled model call, not after.
 - **P1-F7 and P1-F8** — the `change_requests` schema and the drafting agent —
   need no credential and can be built now.
-- **Everything else in Stages 4 and 5 is blocked on something only Chris can
-  provide**: VAPID keys for Web Push (P1-F6 delivery), a fine-grained GitHub
-  PAT scoped to one repository and `issues: write` (P1-F9), a webhook signing
-  secret (P1-F10), branch protection on `main` (P1-F12.2). Ask; do not
-  improvise a notification channel or a token in the diff.
+- **P1-F13 test isolation is done.** Both suites seed their own taxonomy and
+  tear down unconditionally, CI fails if a `@reeve.test` account accumulates,
+  and `migrate.mjs` now refuses a migration that rewrites existing rows unless
+  you pass `--yes`. Hardening F8.3 required this, was skipped, and is
+  superseded by it.
+- **P1-F12.2 branch protection is applied.** `main` requires the `check` and
+  `e2e` jobs, blocks force-pushes and deletions, and still permits a direct
+  push by an admin — so implementation sessions work as before, and CI failing
+  is now a wall rather than a notification.
+- **Nothing is blocked on a credential any more.** All four are in
+  `.env.local` and, where a function needs them, in Supabase function secrets:
+  VAPID (three values), `GITHUB_ISSUES_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
+  `SENTRY_DSN` / `VITE_SENTRY_DSN` / `SENTRY_AUTH_TOKEN`. Check before
+  assuming one is missing.
+- **Hardening F7 (Sentry) is still not built**, and P1-F5.2 is specified to
+  alert. Build them together: a ceiling that refuses silently is a ceiling
+  nobody knows was hit.
 
-Web Push still does not exist — no `pushManager` call, no VAPID key, no
-subscription table. It sits in the hardening spec's §4 out-of-scope table with
-its earning condition written as *"Phase 1's approval gate needs a delivery
-channel"*, a condition the Phase 1 approval has now met. **It needs speccing
-before Stage 4 or Stage 5's gate can be delivered.**
+Web Push is built and deployed — `docs/arc-spec-web-push.md` §0 records what
+was verified and what was not. **Delivery has never been proven**: everything
+up to the push service accepting the request is exercised, but a notification
+has not arrived on a device. That is WP-F6.3 and it needs the iPhone.
+
+The inline permission ask (WP-F4.3) has no home yet either. Its moment is a
+change request being filed, which is P1-F9 — build it there rather than
+inventing an earlier prompt, because **a denied permission is permanent** and
+asking at the wrong moment burns the only chance there is.
 
 ### Also outstanding — hardening P2
 
@@ -108,9 +125,9 @@ pnpm dev              # Vite dev server. No service worker here — devOptions.e
 pnpm build            # tsc --noEmit, vite build, then the secret scan
 pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
-pnpm test             # vitest, 63 tests
+pnpm test             # vitest, 70 tests
 pnpm test:e2e         # playwright, 7 tests; builds and previews first
-pnpm db:migrate       # apply supabase/migrations in order
+pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes
 pnpm db:status        # what is applied, what is pending
 pnpm db:seed --owner you@example.com   # areas, from the gitignored seed file
 pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
@@ -127,6 +144,17 @@ Supabase CLI and an access token:
 ```sh
 export SUPABASE_ACCESS_TOKEN=...        # from .env.local
 supabase functions deploy triage --project-ref <ref>
+supabase functions deploy send-push --project-ref <ref>
+```
+
+Function secrets are set the same way. Web Push needs three, not two — signing
+takes the whole keypair, so the *public* key is a function secret as well:
+
+```sh
+supabase secrets set --project-ref <ref> \
+  "VAPID_PUBLIC_KEY=$VITE_VAPID_PUBLIC_KEY" \
+  "VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY" \
+  "VAPID_SUBJECT=https://app.chrisquinn.ie"
 ```
 
 ---
@@ -134,6 +162,21 @@ supabase functions deploy triage --project-ref <ref>
 ## Things that cost hours
 
 Each of these was learned the expensive way. They are not visible in the code.
+
+**The Supabase auth admin API 403s at random.** `createUser`, `listUsers` and
+`signInWithPassword` intermittently return `bad_jwt` — *"unrecognized JWT kid
+&lt;nil&gt; for algorithm ES256"* — against a key that works seconds later. Roughly
+one call in twenty. It reads exactly like a credential problem and is not.
+Every such call goes through `retryAuth()` in `tests/support/test-accounts.ts`;
+`main` now requires the CI jobs these run in, so an unretried one is a gate
+that blocks merges at random.
+
+**A migration that rewrites existing rows is refused unless you pass `--yes`.**
+`scripts/migrate.mjs` runs each migration in a transaction, counts the UPDATE
+and DELETE rows, and rolls back rather than applying one that touches existing
+data on the first ask. `--dry-run` reports without applying. This is P1-F13.6,
+and it exists because the one migration that did this ran clean, reported
+success, and destroyed data.
 
 **The test accounts had more data than the real one, and a migration believed
 them.** `0003_areas_ownership.sql` had to give every existing `areas` row an
