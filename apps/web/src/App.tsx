@@ -4,6 +4,7 @@ import { Inbox as InboxIcon, PenLine } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/lib/supabase";
 import { startOutboxWatcher } from "@/lib/outbox";
+import { requestPersistentStorage } from "@/lib/draft";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
@@ -32,6 +33,9 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
+    // Ask to be exempt from eviction. The outbox and the draft both live in
+    // storage Safari will clear after ~7 days of non-use otherwise.
+    void requestPersistentStorage();
     return startOutboxWatcher();
   }, [session]);
 

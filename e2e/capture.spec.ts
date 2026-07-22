@@ -51,7 +51,8 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   await page.getByLabel("Capture a thought").fill(text);
   await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
 
-  // Feedback must be immediate — the field clears before the network is touched.
+  // The field clears as soon as the capture is durable locally — never after
+  // a network round-trip, and never before the write has resolved.
   await expect(page.getByLabel("Capture a thought")).toHaveValue("");
   await expect(page.getByText("Captured")).toBeVisible();
 

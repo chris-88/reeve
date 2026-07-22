@@ -4,9 +4,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { enqueue, flush, subscribe, type PendingCapture } from "@/lib/outbox";
+import { clearDraft, readDraft, writeDraft } from "@/lib/draft";
 import { cn } from "@/lib/utils";
-
-const DRAFT_KEY = "reeve.draft.v1";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -21,25 +20,45 @@ const greeting = () => {
  * On desktop, Cmd/Ctrl+Enter saves.
  */
 export default function Capture() {
-  const [text, setText] = useState(() => localStorage.getItem(DRAFT_KEY) ?? "");
+  const [text, setText] = useState(readDraft);
   const [pending, setPending] = useState<PendingCapture[]>([]);
+  const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // An installed PWA can be evicted from memory mid-sentence. Persist keystrokes.
   useEffect(() => {
-    localStorage.setItem(DRAFT_KEY, text);
+    writeDraft(text);
   }, [text]);
 
   useEffect(() => subscribe(setPending), []);
 
+  /**
+   * The field clears only once the capture is durable locally.
+   *
+   * Clearing first loses the thought outright if the write rejects — quota
+   * exhausted, private mode, storage evicted mid-write — which is the one
+   * failure this app claims cannot happen. enqueue() is a single IndexedDB
+   * write, so awaiting it costs well under a millisecond and never waits on
+   * the network.
+   */
   async function save() {
     const value = text.trim();
-    if (!value) return;
-    setText("");
-    localStorage.removeItem(DRAFT_KEY);
-    await enqueue(value);
-    toast("Captured", { description: "Filing it now." });
-    ref.current?.focus();
+    if (!value || saving) return;
+    setSaving(true);
+    try {
+      await enqueue(value);
+      setText("");
+      clearDraft();
+      toast("Captured", { description: "Filing it now." });
+      ref.current?.focus();
+    } catch (err) {
+      console.error("[reeve] enqueue failed", err);
+      toast.error("Couldn't save that", {
+        description: "Your text is still here. Try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const stuck = pending.filter((p) => p.attempts > 0).length;
@@ -56,13 +75,10 @@ export default function Capture() {
 
       {/*
         iOS will not open the keyboard without a user gesture, so autofocus is
-        unreliable. The whole field area is the tap target.
+        unreliable. A <label> makes the whole field area the tap target without
+        needing a click handler on a non-interactive element.
       */}
-      <div
-        className="min-h-0 flex-1 cursor-text px-6 pt-2"
-        onClick={() => ref.current?.focus()}
-        role="presentation"
-      >
+      <label className="min-h-0 flex-1 cursor-text px-6 pt-2">
         <Textarea
           ref={ref}
           value={text}
@@ -72,6 +88,12 @@ export default function Capture() {
           }}
           placeholder="What's on your mind?"
           aria-label="Capture a thought"
+          // Dictation-first: sentence case, spellcheck on, and Return inserts a
+          // newline rather than submitting.
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          spellCheck
+          enterKeyHint="enter"
           className={cn(
             "h-full max-h-none min-h-0 resize-none border-0 bg-transparent p-0 shadow-none",
             "font-serif !text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em]",
@@ -79,11 +101,9 @@ export default function Capture() {
             "focus-visible:ring-0 dark:bg-transparent",
           )}
         />
-      </div>
+      </label>
 
-      <div
-        className="shrink-0 space-y-3 px-6 pt-3 pb-4"
-      >
+      <div className="pb-safe shrink-0 space-y-3 px-6 pt-3 pb-4">
         {pending.length > 0 && (
           <button
             type="button"
@@ -108,12 +128,12 @@ export default function Capture() {
           type="button"
           size="lg"
           onClick={() => void save()}
-          disabled={!text.trim()}
+          disabled={!text.trim() || saving}
           className="h-[3.75rem] w-full rounded-2xl text-[0.95rem] font-medium tracking-wide transition-all disabled:opacity-20"
         >
           <ArrowUp className="size-5" strokeWidth={2.5} aria-hidden />
-          Capture
-          {words > 0 && (
+          {saving ? "Saving…" : "Capture"}
+          {!saving && words > 0 && (
             <span className="text-primary-foreground/50 ml-1 text-sm font-normal tabular-nums">
               {words} {words === 1 ? "word" : "words"}
             </span>
