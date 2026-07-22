@@ -42,11 +42,46 @@ capable, installable.
 | Document | Status |
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
+| `docs/arc-spec-phase-1.md` | **Approved 22 July 2026, Stages 0–5. Active work.** Stage 6 described but not approved |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
-| `docs/arc-spec-phase-1.md` | Proposed. **Not approved to build** |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
-**Outstanding, in the order the spec argues for:**
+### Phase 1 — the current build
+
+Start at `docs/arc-spec-phase-1.md` §0 and follow the sequencing in §10.
+Stage 0 (`P1-F0`, `areas` ownership) depends on nothing and is the entry point.
+
+Three things were checked against the live system after that spec was approved.
+They change what its early tickets require, so read them before starting:
+
+- **P1-F0.1 is already answered: sign-ups are disabled** (`disable_signup:
+  true`, anonymous sign-in off, confirmed against the Supabase management API
+  on 22 July 2026). They were turned off when auth moved from magic links to
+  email and password. So the `areas` exposure the spec describes is **latent,
+  not live** — it is still worth fixing, and the spec's reasoning is sound, but
+  nobody else can currently obtain a session. Treat it as P0 for correctness,
+  not as an incident.
+- **P1-F0.2 asks for migration `0002`. That number is taken** —
+  `0002_triage_guarantee.sql` landed with the hardening work and is applied.
+  Use `0003_areas_ownership.sql`. A second `0002_*` would not break
+  `scripts/migrate.mjs` (it tracks by filename, and `0002_areas…` sorts *before*
+  the applied `0002_triage…`), which is exactly why it would go unnoticed.
+  Check `pnpm db:status` before naming any migration.
+- **Stage 4 has an unbuilt dependency that is not a ticket anywhere.** The
+  spec's §1 table says Stage 4 needs "Hardening F1 and §4 Web Push". F1 is
+  done; **Web Push does not exist** — no `pushManager` call, no VAPID key, no
+  subscription table. It sits in the hardening spec's out-of-scope table (line
+  676) with its earning condition written as *"Phase 1's approval gate needs a
+  delivery channel"* — a condition this approval has now met. It needs speccing
+  before Stage 4 or Stage 5's approval gate can be delivered. Raise it; do not
+  improvise a notification channel in the diff.
+
+Stage 1 depends on hardening F3 and F4 (both done). Stage 5 depends on F4 and
+F8's CI gates (both done). Nothing in Stages 0–3 is blocked.
+
+### Also outstanding — hardening P2
+
+Lower priority than Phase 1, but F10 is the one with a cost today.
 
 - **F9 Realtime resilience** — resubscribe on `visibilitychange`, handle
   `CHANNEL_ERROR`/`TIMED_OUT`, add a `user_id` filter to the subscription,
@@ -55,7 +90,9 @@ capable, installable.
 - **F10 Session lifecycle** — there is no sign-out. A session in a bad state is
   currently unrecoverable without developer tools, and the persisted query
   cache has to be purged with it (**but not the outbox** — unsent captures
-  belong to the device, not the session).
+  belong to the device, not the session). Note that Phase 1's P1-F0 makes this
+  sharper: the moment `areas` is owner-scoped, testing it needs a second
+  account, and there is no way to switch accounts.
 - **F11 Smaller items** — `useInfiniteQuery` pagination, code splitting (the
   bundle is one ~628 KB chunk), document the JWT-pattern caveat in
   `check-bundle.mjs`.
@@ -103,6 +140,11 @@ Each of these was learned the expensive way. They are not visible in the code.
 shell out to it and will fail. `scripts/migrate.mjs` connects to Postgres
 directly over `DATABASE_URL` instead, tracks applied migrations in
 `_reeve_migrations` with SHA checksums, and is idempotent. Use it.
+
+**Run `pnpm db:status` before naming a migration.** Tracking is by filename, so
+a duplicate number is applied happily and silently — and if it sorts before the
+existing one, it runs out of order too. The specs name migration numbers that
+were free when they were written, not when you read them.
 
 **The repo is public.** It was made public because GitHub Pages on the free
 plan cannot serve a private repo. Personal content was stripped from history

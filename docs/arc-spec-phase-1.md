@@ -1,6 +1,7 @@
 # Reeve: Architecture Spec — Phase 1
 
-Status: Proposed. Not yet approved to build
+Status: **Approved. Build ready** — Stage 0 through Stage 5. Stage 6 (§8)
+remains described, not built, and approval here does not extend to it.
 Owner: spec-owned. Implementation runs in separate sessions — where this
 document is wrong, ambiguous or silent, raise it against the spec rather than
 deciding it in the diff.
@@ -10,6 +11,47 @@ Audience: implementing dev team
 
 Feature IDs in this document are prefixed `P1-` and are numbered independently
 of the PWA hardening spec.
+
+---
+
+## 0. Implementation status
+
+Approved 22 July 2026. Nothing started.
+
+Update this table as features land, in the pattern of
+`docs/arc-spec-pwa-hardening.md` §0 — including the sections recording defects
+the spec failed to predict and gaps left open. Those two sections were the most
+useful output of the last implementation round and are not optional.
+
+| Stage | | Feature | Status |
+|---|---|---|---|
+| 0 | P0 | **P1-F0** `areas` ownership | ⬜ Not started |
+| 1 | P0 | **P1-F1** Commitments as rows | ⬜ Not started |
+| 1 | P0 | **P1-F2** The Due view | ⬜ Not started |
+| 2 | P1 | **P1-F3** Corrections report | ⬜ Not started |
+| 3 | P1 | **P1-F4** Cross-capture retrieval | ⬜ Not started |
+| 4 | P0 | **P1-F5** Cost ceiling | ⬜ Not started |
+| 4 | P1 | **P1-F6** The daily brief | ⬜ Not started |
+| 5 | P0 | **P1-F7** Change requests | ⬜ Not started |
+| 5 | P0 | **P1-F8** The drafting agent | ⬜ Not started |
+| 5 | P0 | **P1-F9** Filing, and the handoff | ⬜ Not started |
+| 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started |
+| 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started |
+| 5 | P0 | **P1-F12** Guardrails | ⬜ Not started |
+| 6 | — | Approval ledger | 🚫 Not approved. Described only |
+
+Priorities are **within a stage**, not across the document. §10 carries the
+sequencing and the reasoning behind it.
+
+### Before starting
+
+Two items are gates rather than features and should be settled first:
+
+- **P1-F0.1** — confirm whether new sign-ups are enabled on the Supabase
+  project. This is a dashboard check, not a code change, and it determines
+  whether `areas` exposure is currently live or only latent.
+- **P1-F5** — the cost ceiling must exist before P1-F6 or P1-F8's scheduled
+  pass runs. Nothing unattended should also be unbounded.
 
 ---
 
