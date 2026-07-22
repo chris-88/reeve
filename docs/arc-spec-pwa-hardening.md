@@ -1,8 +1,69 @@
 # Reeve: Architecture Spec — PWA Hardening
 
-Status: Ready to implement
+Status: **P0 and P1 complete and deployed.** P2 outstanding.
 Supersedes: nothing. Extends `docs/spec.md` (Phase 0)
 Audience: implementing dev team
+
+---
+
+## 0. Implementation status
+
+Every factual claim in this document was verified against the code before any
+change was made. All of them held.
+
+| | Feature | Status |
+|---|---|---|
+| P0 | **F3** Durable capture | ✅ Done |
+| P0 | **F0** Single origin | ✅ Done |
+| P0 | **F1** Offline application shell | ✅ Done |
+| P0 | **F2** Offline read path | ✅ Done |
+| P1 | **F4** Outbox reliability | ✅ Done |
+| P1 | **F5** Triage completion guarantee | ✅ Done |
+| P1 | **F6** Install and platform metadata | ✅ Done |
+| P1 | **F7** Observability | ⏸️ Deferred — needs a Sentry DSN |
+| P1 | **F8** CI gates | ✅ Done |
+| P2 | **F9** Realtime resilience | ⬜ Not started |
+| P2 | **F10** Session lifecycle | ⬜ Not started |
+| P2 | **F11** Smaller items | ⬜ Not started |
+
+### Verified against the acceptance criteria
+
+- Offline cold load renders the capture screen; a capture taken offline
+  survives a reload and reaches `done` on reconnect. Covered by
+  `e2e/offline.spec.ts`.
+- A row inserted directly into the database with `status = 'queued'` and no
+  invoke reached `done` in **30 seconds** via the `pg_cron` sweeper.
+- 34 unit tests and 4 end-to-end tests pass. CI runs typecheck, lint, unit
+  tests, build and Playwright on both Chromium and WebKit; deploy is gated on
+  it.
+
+### Three defects found during implementation that this spec did not predict
+
+1. **`flush()` did not resolve when the work was done.** It returned as soon as
+   another flush held the latch, so `await flush()` meant "someone else is
+   working on it". Four of the new F4.9 unit tests failed on this before it was
+   fixed — which is the clearest possible argument for F4.9 having been worth
+   doing.
+2. **`clients.claim()` was missing from the service worker.** Without it a
+   newly installed worker does not control the page that registered it, so the
+   *first* session after install had no offline capability at all.
+3. **A `<label>` with no associated control**, introduced while fixing F11.3
+   and caught by `jsx-a11y` within minutes of F8.6 landing.
+
+### Known gaps
+
+- **The offline test is skipped on WebKit.** Playwright's WebKit throws an
+  internal error on a reload while offline, so it cannot exercise a
+  service-worker-served navigation. Chromium passes the same assertions, so
+  this is a harness limitation — but offline behaviour on the engine the app
+  actually ships to is **not covered by CI** and needs a manual check on a
+  device.
+- **Point 1 of §5 has not been verified.** Aeroplane mode, cold-launched from
+  the home screen on a real iPhone, is the one criterion no automated test can
+  stand in for.
+- **F7 is deferred**, so §5 point 5 — a stuck capture raising an alert — is
+  not met. The `pg_cron` sweeper means a capture no longer *gets* stuck in the
+  ways this document described, but nothing would report it if one did.
 
 ---
 

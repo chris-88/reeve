@@ -41,6 +41,15 @@
   --color-line: #2b2932;
   --color-text: #f2f0ee;
   --color-muted: #9b96a3;
+  /*
+   * 5.1:1 on --color-bg. For text that should recede without becoming
+   * unreadable — timestamps, day headers, section labels.
+   *
+   * This exists because `text-muted-foreground/70` and friends were dimming an
+   * already-muted token a second time, landing at 3.8:1 and below. No text-*
+   * class in this app should carry an opacity modifier.
+   */
+  --color-muted-dim: #83808a;
   --color-danger: #f2685f;
 
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -121,6 +130,20 @@ select {
 :focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 2px;
+}
+
+/*
+ * ...except the writing surface, where the caret already shows focus and a
+ * near-white ring around the page's only content is noise rather than
+ * affordance. The field is focused for the entire time someone is writing, so
+ * this ring was effectively permanent.
+ *
+ * Scoped to shadcn's data-slot so it stays tied to the component, and
+ * deliberately not applied to `input` — the sign-in form has two fields and
+ * genuinely benefits from a focus indicator when tabbing between them.
+ */
+[data-slot="textarea"]:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

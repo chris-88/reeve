@@ -5,6 +5,7 @@ import type { Area, Capture } from "@reeve/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
 import { subscribe, type PendingCapture } from "@/lib/outbox";
+import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
 import CaptureDetail from "@/components/CaptureDetail";
 
@@ -32,6 +33,7 @@ export default function Inbox() {
   const [filter, setFilter] = useState<string | null>(null);
   const [open, setOpen] = useState<Capture | null>(null);
   const [pending, setPending] = useState<PendingCapture[]>([]);
+  const online = useOnline();
 
   useEffect(() => subscribe(setPending), []);
 
@@ -144,10 +146,15 @@ export default function Inbox() {
                 key={p.id}
                 className="border-border/50 bg-card/50 flex items-center gap-3 rounded-xl border border-dashed px-3.5 py-3"
               >
-                {p.attempts > 0 ? (
+                {!online ? (
+                  <CloudOff className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                ) : p.deadLettered ? (
                   <CloudOff className="text-destructive size-4 shrink-0" aria-hidden />
                 ) : (
-                  <Loader2 className="text-muted-foreground size-4 shrink-0 animate-spin" aria-hidden />
+                  <Loader2
+                    className="text-muted-foreground size-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
                 )}
                 <p className="text-muted-foreground min-w-0 flex-1 truncate text-sm">{p.raw_text}</p>
               </li>
@@ -156,7 +163,7 @@ export default function Inbox() {
         )}
 
         {showingStale && (
-          <p className="text-muted-foreground/80 flex items-center gap-2 pb-2 text-xs">
+          <p className="text-muted-dim flex items-center gap-2 pb-2 text-xs">
             <WifiOff className="size-3.5" aria-hidden />
             Offline — showing what was here last.
           </p>
@@ -178,7 +185,7 @@ export default function Inbox() {
 
         {grouped.map(({ day, items }) => (
           <section key={day}>
-            <h2 className="text-muted-foreground/70 sticky top-0 z-1 bg-background/90 py-2 text-xs font-semibold tracking-widest uppercase backdrop-blur">
+            <h2 className="text-muted-dim sticky top-0 z-1 bg-background/90 py-2 text-xs font-semibold tracking-widest uppercase backdrop-blur">
               {day}
             </h2>
             <ul>
@@ -202,7 +209,7 @@ export default function Inbox() {
                           <span className="min-w-0 flex-1 truncate font-serif text-[1.05rem] font-normal">
                             {c.title ?? c.raw_text}
                           </span>
-                          <span className="text-muted-foreground/70 shrink-0 text-xs tabular-nums">
+                          <span className="text-muted-dim shrink-0 text-xs tabular-nums">
                             {relativeTime(c.created_at)}
                           </span>
                         </span>
@@ -301,7 +308,7 @@ function Chip({
         <span aria-hidden className="size-2 rounded-full" style={{ background: colour }} />
       )}
       {label}
-      <span className="text-muted-foreground/60 text-xs tabular-nums">{count}</span>
+      <span className="text-muted-dim text-xs tabular-nums">{count}</span>
     </button>
   );
 }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { enqueue, flush, retryItem, subscribe, type PendingCapture } from "@/lib/outbox";
 import { clearDraft, readDraft, writeDraft } from "@/lib/draft";
+import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
 
 const greeting = () => {
@@ -23,6 +24,7 @@ export default function Capture({ userId }: { userId: string }) {
   const [text, setText] = useState(readDraft);
   const [pending, setPending] = useState<PendingCapture[]>([]);
   const [saving, setSaving] = useState(false);
+  const online = useOnline();
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // An installed PWA can be evicted from memory mid-sentence. Persist keystrokes.
@@ -62,6 +64,12 @@ export default function Capture({ userId }: { userId: string }) {
   }
 
   const dead = pending.filter((p) => p.deadLettered);
+  /**
+   * Offline outranks syncing: a spinner that can never resolve is a lie, and
+   * "Syncing…" was what the user saw indefinitely with no network. There is
+   * nothing to retry against while offline, so that affordance is withheld too.
+   */
+  const sync = !online ? "offline" : dead.length > 0 ? "stuck" : "syncing";
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
   return (
@@ -98,7 +106,7 @@ export default function Capture({ userId }: { userId: string }) {
           className={cn(
             "h-full max-h-none min-h-0 resize-none border-0 bg-transparent p-0 shadow-none",
             "font-serif !text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em]",
-            "placeholder:text-muted-foreground/40 placeholder:font-light placeholder:italic",
+            "placeholder:text-muted-dim placeholder:font-light placeholder:italic",
             "focus-visible:ring-0 dark:bg-transparent",
           )}
         />
@@ -108,20 +116,28 @@ export default function Capture({ userId }: { userId: string }) {
         {pending.length > 0 && (
           <button
             type="button"
-            onClick={() => void (dead.length ? Promise.all(dead.map((d) => retryItem(d.id))) : flush())}
+            disabled={sync === "offline"}
+            onClick={() =>
+              void (dead.length ? Promise.all(dead.map((d) => retryItem(d.id))) : flush())
+            }
             className="border-border/60 bg-card text-muted-foreground flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm"
           >
-            {dead.length > 0 ? (
-              <CloudOff className="text-destructive size-4 shrink-0" aria-hidden />
-            ) : (
+            {sync === "syncing" ? (
               <RefreshCw className="size-4 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <CloudOff
+                className={cn("size-4 shrink-0", sync === "stuck" && "text-destructive")}
+                aria-hidden
+              />
             )}
             <span className="flex-1 text-left">
-              {dead.length > 0
-                ? `${dead.length} couldn't sync. They're saved here.`
-                : `Syncing ${pending.length}…`}
+              {sync === "offline"
+                ? "Offline. Saved on this device."
+                : sync === "stuck"
+                  ? `${dead.length} couldn't sync. They're saved here.`
+                  : `Syncing ${pending.length}…`}
             </span>
-            {dead.length > 0 && <span className="text-foreground font-medium">Retry</span>}
+            {sync === "stuck" && <span className="text-foreground font-medium">Retry</span>}
           </button>
         )}
 

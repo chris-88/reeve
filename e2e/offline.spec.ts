@@ -91,3 +91,26 @@ test("captures survive going offline and sync on reconnect", async ({
     )
     .toBe("done");
 });
+
+/** UI-3: offline must read as offline, not as an endless spinner. */
+test("offline shows an offline state, not a spinner", async ({ page, context, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
+
+  await page.goto("/");
+  await page.getByPlaceholder("you@example.com").fill(EMAIL);
+  await page.getByPlaceholder("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
+
+  await context.setOffline(true);
+  await page.getByLabel("Capture a thought").fill("offline copy check");
+  await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
+
+  await expect(page.getByText("Offline. Saved on this device.")).toBeVisible();
+  // A spinner that can never resolve is a lie.
+  await expect(page.locator(".animate-spin")).toHaveCount(0);
+  await expect(page.getByText("Retry")).toBeHidden();
+
+  await context.setOffline(false);
+  await expect(page.getByText("Offline. Saved on this device.")).toBeHidden({ timeout: 20_000 });
+});

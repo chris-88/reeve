@@ -1,10 +1,13 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 /**
- * The app is dark-only: `dark` is hardcoded on <html> and there is no theme
- * switcher. shadcn's default wires this to next-themes, but with no provider
- * mounted useTheme() returned undefined and the theme was decided by chance.
- * Pinned explicitly instead, and the dependency dropped.
+ * The app is dark-only — `dark` is hardcoded on <html> and there is no theme
+ * switcher — so the theme is pinned rather than read from a provider.
+ *
+ * The custom properties below must use the `--color-` prefixed names.
+ * Tailwind v4's `@theme` block emits variables exactly as declared and does
+ * not also emit unprefixed aliases, so `var(--popover)` resolved to nothing
+ * and sonner fell back to a transparent, borderless card.
  */
 const Toaster = ({ ...props }: ToasterProps) => (
   <Sonner
@@ -12,9 +15,10 @@ const Toaster = ({ ...props }: ToasterProps) => (
     className="toaster group"
     style={
       {
-        "--normal-bg": "var(--popover)",
-        "--normal-text": "var(--popover-foreground)",
-        "--normal-border": "var(--border)",
+        "--normal-bg": "var(--color-popover)",
+        "--normal-text": "var(--color-popover-foreground)",
+        "--normal-border": "var(--color-border)",
+        "--border-radius": "var(--radius)",
       } as React.CSSProperties
     }
     {...props}

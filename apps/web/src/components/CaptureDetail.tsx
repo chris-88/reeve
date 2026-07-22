@@ -126,7 +126,7 @@ export default function CaptureDetail({
             <div className="space-y-4">
               {populated.map(([key, values]) => (
                 <div key={key}>
-                  <h3 className="text-muted-foreground/70 text-[0.7rem] font-semibold tracking-widest uppercase">
+                  <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
                     {ENTITY_LABELS[key]}
                   </h3>
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -144,7 +144,7 @@ export default function CaptureDetail({
           <Separator />
 
           <div>
-            <h3 className="text-muted-foreground/70 text-[0.7rem] font-semibold tracking-widest uppercase">
+            <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
               Filed under
             </h3>
             <div className="mt-2.5 flex flex-wrap gap-2">
@@ -191,7 +191,7 @@ export default function CaptureDetail({
           <Separator />
 
           <div>
-            <h3 className="text-muted-foreground/70 text-[0.7rem] font-semibold tracking-widest uppercase">
+            <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
               What you said
             </h3>
             <p className="text-muted-foreground mt-2 font-serif leading-relaxed whitespace-pre-wrap">
