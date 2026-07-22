@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CloudOff, Loader2, PenLine } from "lucide-react";
+import { AlertCircle, CloudOff, Loader2, PenLine, WifiOff } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
@@ -45,7 +45,12 @@ export default function Inbox() {
     },
   });
 
-  const { data: captures = [], isLoading } = useQuery({
+  const {
+    data: captures = [],
+    isLoading,
+    fetchStatus,
+    isSuccess,
+  } = useQuery({
     queryKey: ["captures"],
     queryFn: async (): Promise<Capture[]> => {
       const { data, error } = await supabase
@@ -87,6 +92,18 @@ export default function Inbox() {
     }
     return out;
   }, [visible]);
+
+  /**
+   * Three distinct states, not one.
+   *
+   * TanStack Query pauses rather than loads when offline, so isLoading is
+   * false and execution used to fall straight through to the empty state —
+   * telling someone who had been capturing all week that they had nothing.
+   */
+  const offline = fetchStatus === "paused";
+  const showingStale = offline && captures.length > 0;
+  const nothingYet = isSuccess && captures.length === 0 && !offline;
+  const offlineAndEmpty = offline && captures.length === 0;
 
   const used = useMemo(() => {
     const counts = new Map<string, number>();
@@ -138,7 +155,14 @@ export default function Inbox() {
           </ul>
         )}
 
-        {isLoading && (
+        {showingStale && (
+          <p className="text-muted-foreground/80 flex items-center gap-2 pb-2 text-xs">
+            <WifiOff className="size-3.5" aria-hidden />
+            Offline — showing what was here last.
+          </p>
+        )}
+
+        {isLoading && !offline && (
           <ul className="space-y-1">
             {[0, 1, 2].map((i) => (
               <li key={i} className="flex gap-3 py-4">
@@ -214,7 +238,17 @@ export default function Inbox() {
           </section>
         ))}
 
-        {!isLoading && visible.length === 0 && pending.length === 0 && (
+        {offlineAndEmpty && pending.length === 0 && (
+          <div className="flex flex-col items-center gap-3 px-8 py-24 text-center">
+            <WifiOff className="text-muted-foreground/40 size-8" strokeWidth={1.5} aria-hidden />
+            <p className="text-muted-foreground text-sm">
+              Offline, and nothing cached on this device yet. Your captures are safe — they
+              will appear once you reconnect.
+            </p>
+          </div>
+        )}
+
+        {nothingYet && visible.length === 0 && pending.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-8 py-24 text-center">
             <PenLine className="text-muted-foreground/40 size-8" strokeWidth={1.5} aria-hidden />
             <p className="text-muted-foreground text-sm">

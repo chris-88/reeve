@@ -14,7 +14,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "vite-plugin-pwa/react", "vite-plugin-pwa/info"],
     "paths": { "@/*": ["./src/*"] },
     "baseUrl": "."
   },

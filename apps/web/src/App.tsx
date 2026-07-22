@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Inbox as InboxIcon, PenLine } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
 import { startOutboxWatcher } from "@/lib/outbox";
 import { requestPersistentStorage } from "@/lib/draft";
@@ -77,6 +78,7 @@ export default function App() {
         })}
       </nav>
 
+      <UpdatePrompt />
       <Toaster position="top-center" />
     </div>
   );

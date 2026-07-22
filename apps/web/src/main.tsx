@@ -1,17 +1,25 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import App from "./App";
+import { cacheBuster, persister, queryClient, shouldPersistQuery } from "@/lib/query";
 import "./styles.css";
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: true } },
-});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        buster: cacheBuster,
+        dehydrateOptions: {
+          // Never write anything derived from an auth response to disk.
+          shouldDehydrateQuery: (q) => shouldPersistQuery(q.queryKey),
+        },
+      }}
+    >
       <App />
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </StrictMode>,
 );

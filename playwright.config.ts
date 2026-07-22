@@ -39,10 +39,17 @@ export default defineConfig({
       use: { ...devices["Pixel 7"] },
     },
   ],
+  /**
+   * Preview, not dev.
+   *
+   * The service worker is disabled in dev, so the offline test — the acceptance
+   * criterion for the whole hardening effort — cannot run against it. Testing
+   * the built artefact is also closer to what actually ships.
+   */
   webServer: {
-    command: "pnpm --filter @reeve/web dev",
+    command: "pnpm --filter @reeve/web build && pnpm --filter @reeve/web preview --port 5173 --strictPort",
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    timeout: 180_000,
   },
 });
