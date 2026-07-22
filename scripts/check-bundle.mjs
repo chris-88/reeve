@@ -15,6 +15,26 @@ dotenv.config({ path: path.join(ROOT, ".env.local"), quiet: true });
 
 const DIST = path.join(ROOT, "apps", "web", "dist");
 
+/**
+ * Public configuration the app cannot boot without.
+ *
+ * `apps/web/src/lib/env.ts` validates these at boot and throws, which is what
+ * WP-F1.4 asks for — but "throws at boot" means the *whole app* fails to
+ * render, capture included, because a notification key is missing. Captures
+ * are never dropped is the governing invariant; a push key is an enhancement.
+ * Those two cannot both be served by a runtime throw.
+ *
+ * So the real check happens here, one step earlier: a build missing any of
+ * these fails in two seconds with a clear message, and can never be deployed.
+ * The runtime throw stays as defence in depth and becomes unreachable.
+ *
+ * This is not hypothetical either. VITE_VAPID_PUBLIC_KEY was added to env.ts
+ * and to no workflow. The build passed — Vite inlines `undefined` happily —
+ * and every end-to-end test then timed out waiting for an app that had thrown
+ * before rendering. Twenty-two minutes of CI to say "a variable is missing".
+ */
+const REQUIRED_PUBLIC = ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY", "VITE_VAPID_PUBLIC_KEY"];
+
 // Values that must never appear in a build artefact.
 //
 // The exact-value check is the only defence for a credential with no
@@ -58,6 +78,17 @@ async function* walk(dir) {
     if (entry.isDirectory()) yield* walk(p);
     else yield p;
   }
+}
+
+const missing = REQUIRED_PUBLIC.filter((name) => !process.env[name]?.trim());
+if (missing.length > 0) {
+  console.error("\n✗ Required public configuration is missing — the app would not boot:\n");
+  for (const name of missing) console.error(`  ${name}`);
+  console.error(
+    "\n  Set it in .env.local for a local build, and as a repository *variable*\n" +
+      "  (not a secret) for CI and deploy. These end up in the bundle by design.\n",
+  );
+  process.exit(1);
 }
 
 const findings = [];
