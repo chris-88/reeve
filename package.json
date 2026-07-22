@@ -15,14 +15,26 @@
     "db:status": "node scripts/migrate.mjs --status",
     "db:seed": "node scripts/seed-areas.mjs",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "@supabase/supabase-js": "^2.110.7",
     "dotenv": "^17.2.3",
+    "eslint": "^10.7.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^17.7.0",
+    "idb-keyval": "^6.3.0",
     "pg": "^8.16.3",
+    "prettier": "^3.9.6",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
   }
 }

@@ -22,22 +22,19 @@ export default defineConfig({
   },
   projects: [
     /**
-     * Chromium at phone size, not WebKit.
+     * Chromium locally, Chromium + WebKit in CI.
      *
-     * WebKit would be the faithful choice — the app targets iOS Safari — but it
-     * needs system libraries this machine can't install without root. Chromium
-     * still covers the logic this suite exists to protect: capture, sync,
-     * triage, and the row appearing.
-     *
-     * It will NOT catch iOS-Safari-specific behaviour: safe-area insets,
-     * keyboard/viewport interaction, PWA install and eviction. Those still need
-     * checking on a real phone. If e2e moves into CI, add a webkit project
-     * there — GitHub's runners can install its dependencies.
+     * The app targets iOS Safari, so WebKit is the faithful choice, but it
+     * needs system libraries the dev machine cannot install without root.
+     * Neither engine catches PWA install or storage eviction behaviour — those
+     * still need a real phone.
      */
     {
       name: "mobile-chromium",
       use: { ...devices["Pixel 7"] },
     },
+    // WebKit only where its system dependencies can be installed.
+    ...(process.env.CI ? [{ name: "mobile-webkit", use: { ...devices["iPhone 14"] } }] : []),
   ],
   /**
    * Preview, not dev.

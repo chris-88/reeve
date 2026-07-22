@@ -3,7 +3,7 @@ import { ArrowUp, CloudOff, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { enqueue, flush, subscribe, type PendingCapture } from "@/lib/outbox";
+import { enqueue, flush, retryItem, subscribe, type PendingCapture } from "@/lib/outbox";
 import { clearDraft, readDraft, writeDraft } from "@/lib/draft";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ const greeting = () => {
  * here is to get the keyboard open in one tap and then stay out of the way.
  * On desktop, Cmd/Ctrl+Enter saves.
  */
-export default function Capture() {
+export default function Capture({ userId }: { userId: string }) {
   const [text, setText] = useState(readDraft);
   const [pending, setPending] = useState<PendingCapture[]>([]);
   const [saving, setSaving] = useState(false);
@@ -46,7 +46,7 @@ export default function Capture() {
     if (!value || saving) return;
     setSaving(true);
     try {
-      await enqueue(value);
+      await enqueue(value, userId);
       setText("");
       clearDraft();
       toast("Captured", { description: "Filing it now." });
@@ -61,7 +61,7 @@ export default function Capture() {
     }
   }
 
-  const stuck = pending.filter((p) => p.attempts > 0).length;
+  const dead = pending.filter((p) => p.deadLettered);
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
   return (
@@ -78,8 +78,9 @@ export default function Capture() {
         unreliable. A <label> makes the whole field area the tap target without
         needing a click handler on a non-interactive element.
       */}
-      <label className="min-h-0 flex-1 cursor-text px-6 pt-2">
+      <label htmlFor="capture-field" className="min-h-0 flex-1 cursor-text px-6 pt-2">
         <Textarea
+          id="capture-field"
           ref={ref}
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -107,20 +108,20 @@ export default function Capture() {
         {pending.length > 0 && (
           <button
             type="button"
-            onClick={() => void flush()}
+            onClick={() => void (dead.length ? Promise.all(dead.map((d) => retryItem(d.id))) : flush())}
             className="border-border/60 bg-card text-muted-foreground flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm"
           >
-            {stuck > 0 ? (
+            {dead.length > 0 ? (
               <CloudOff className="text-destructive size-4 shrink-0" aria-hidden />
             ) : (
               <RefreshCw className="size-4 shrink-0 animate-spin" aria-hidden />
             )}
             <span className="flex-1 text-left">
-              {stuck > 0
-                ? `${stuck} couldn't sync. They're saved here.`
+              {dead.length > 0
+                ? `${dead.length} couldn't sync. They're saved here.`
                 : `Syncing ${pending.length}…`}
             </span>
-            {stuck > 0 && <span className="text-foreground font-medium">Retry</span>}
+            {dead.length > 0 && <span className="text-foreground font-medium">Retry</span>}
           </button>
         )}
 

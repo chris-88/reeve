@@ -1,7 +1,11 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  # Only after CI has passed on main. Previously every push deployed, tested
+  # or not.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -17,6 +21,9 @@ concurrency:
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

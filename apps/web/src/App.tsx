@@ -52,7 +52,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <main className="pt-safe min-h-0 flex-1">
-        {screen === "capture" ? <Capture /> : <Inbox />}
+        {screen === "capture" ? <Capture userId={session.user.id} /> : <Inbox />}
       </main>
 
       <nav
