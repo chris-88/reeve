@@ -14,9 +14,11 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:status": "node scripts/migrate.mjs --status",
     "db:seed": "node scripts/seed-areas.mjs",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@supabase/supabase-js": "^2.110.7",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3",

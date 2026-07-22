@@ -13,9 +13,14 @@ import {
 const MAX_ATTEMPTS = 3;
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
+// supabase-js sends apikey and x-client-info alongside authorization. Omitting
+// them from the preflight response makes the browser block the request outright
+// while server-side callers, which skip CORS entirely, keep working — so the
+// failure is invisible unless you test from a real browser.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

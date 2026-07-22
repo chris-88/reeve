@@ -12,7 +12,7 @@ import Inbox from "@/screens/Inbox";
 type Screen = "capture" | "inbox";
 
 const NAV = [
-  { id: "capture", label: "Capture", Icon: PenLine },
+  { id: "capture", label: "Write", Icon: PenLine },
   { id: "inbox", label: "Inbox", Icon: InboxIcon },
 ] as const;
 

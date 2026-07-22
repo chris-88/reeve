@@ -25,6 +25,7 @@ export type PendingCapture = {
 type Listener = (items: PendingCapture[]) => void;
 const listeners = new Set<Listener>();
 let flushing = false;
+let flushAgain = false;
 
 async function read(): Promise<PendingCapture[]> {
   return (await get<PendingCapture[]>(KEY)) ?? [];
@@ -58,9 +59,20 @@ export async function enqueue(rawText: string): Promise<PendingCapture> {
   return item;
 }
 
-/** Attempt to sync every queued capture. Safe to call concurrently. */
+/**
+ * Attempt to sync every queued capture. Safe to call concurrently.
+ *
+ * A concurrent call coalesces into one more pass rather than being dropped.
+ * Returning early instead loses the capture that triggered it: the app fires a
+ * flush on mount, and a capture saved while that is still in flight would sit
+ * in IndexedDB until the next reconnect or foreground event.
+ */
 export async function flush(): Promise<void> {
-  if (flushing || !navigator.onLine) return;
+  if (flushing) {
+    flushAgain = true;
+    return;
+  }
+  if (!navigator.onLine) return;
   flushing = true;
   try {
     const {
@@ -93,22 +105,54 @@ export async function flush(): Promise<void> {
         );
       }
     }
+
+    await sweepQueued();
   } finally {
     flushing = false;
+    if (flushAgain) {
+      flushAgain = false;
+      void flush();
+    }
   }
 }
 
 /**
- * Kick off triage. Fire-and-forget: the row is already safe in Supabase, and
- * the inbox reflects its status over Realtime regardless of what happens here.
+ * Ask the Edge Function to triage a capture.
+ *
+ * Failures here are recoverable but must not be silent: an earlier version
+ * swallowed them, and a CORS misconfiguration left captures sitting at
+ * 'queued' indefinitely with nothing anywhere to say why.
  */
 async function triage(captureId: string): Promise<void> {
   try {
-    await supabase.functions.invoke("triage", { body: { capture_id: captureId } });
-  } catch {
-    // Swallowed deliberately — see doc comment. Retry is handled server-side
-    // via the attempts column, and a stuck row is visible in the inbox.
+    const { error } = await supabase.functions.invoke("triage", {
+      body: { capture_id: captureId },
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error("[reeve] triage failed for", captureId, err);
+    // The row is safe in Supabase and sweepQueued() below will retry it.
   }
+}
+
+/**
+ * Re-trigger triage for anything still sitting at 'queued'.
+ *
+ * The invocation is a separate step from the insert, so a capture can land in
+ * the database and then never be picked up — a dropped request, a closed tab,
+ * a bad deploy. Without this, such a row stays queued forever: the function's
+ * own retry only covers failures *inside* a run that already started.
+ */
+async function sweepQueued(): Promise<void> {
+  const { data, error } = await supabase
+    .from("captures")
+    .select("id")
+    .eq("status", "queued")
+    .lt("attempts", 3)
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (error || !data?.length) return;
+  for (const row of data) await triage(row.id as string);
 }
 
 /** Retry syncing on reconnect and whenever the app comes back to the foreground. */

@@ -22,3 +22,6 @@ supabase/.temp/
 # Personal content. The shape is in the .example files.
 docs/spec.md
 supabase/seed/areas.json
+
+# Playwright
+.playwright/
