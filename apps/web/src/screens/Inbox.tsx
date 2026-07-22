@@ -185,7 +185,7 @@ export default function Inbox() {
 
         {grouped.map(({ day, items }) => (
           <section key={day}>
-            <h2 className="text-muted-dim sticky top-0 z-1 bg-background/90 py-2 text-xs font-semibold tracking-widest uppercase backdrop-blur">
+            <h2 className="text-muted-dim bg-bg/80 sticky top-0 z-1 -mx-8 px-8 py-2 text-xs font-semibold tracking-widest uppercase backdrop-blur-md">
               {day}
             </h2>
             <ul>
@@ -206,7 +206,7 @@ export default function Inbox() {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline gap-2">
-                          <span className="min-w-0 flex-1 truncate font-serif text-[1.05rem] font-normal">
+                          <span className="line-clamp-2 min-w-0 flex-1 font-serif text-[1.05rem] font-normal">
                             {c.title ?? c.raw_text}
                           </span>
                           <span className="text-muted-dim shrink-0 text-xs tabular-nums">

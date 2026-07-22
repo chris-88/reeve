@@ -57,8 +57,8 @@ export default defineConfig({
         scope: "/",
         display: "standalone",
         display_override: ["standalone", "minimal-ui"],
-        background_color: "#0B0D10",
-        theme_color: "#0B0D10",
+        background_color: "#0c0b0d",
+        theme_color: "#0c0b0d",
         icons: [
           { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
           { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },

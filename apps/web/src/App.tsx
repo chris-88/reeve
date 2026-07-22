@@ -56,6 +56,7 @@ export default function App() {
       </main>
 
       <nav
+        aria-label="Main"
         className="border-border/60 bg-background/80 pb-safe flex shrink-0 border-t backdrop-blur-lg"
       >
         {NAV.map(({ id, label, Icon }) => {

@@ -83,6 +83,9 @@ export default function CaptureDetail({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         showCloseButton
+        // The title and body are the description; Radix only needs to be told
+        // this is deliberate rather than an omission.
+        aria-describedby={undefined}
         className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 rounded-none p-0 sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl"
       >
         <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-4 text-left">

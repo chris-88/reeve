@@ -43,7 +43,9 @@ exist.
 It commits to building **state**, not intelligence. Stages 1 to 3 add no new
 model capability whatsoever — they make the output triage already produces
 usable. Stage 4 introduces the first new agent, deliberately chosen to be one
-that cannot do harm. Stage 5 is described but explicitly not built.
+that cannot do harm. Stage 5 introduces the first agent that *can* act, chosen
+because its approval gate already exists and is mature. Stage 6 is described
+but explicitly not built.
 
 The governing principle from `docs/spec.md` §1 holds throughout: **features are
 earned by observed need, not anticipated need.** §7 of this document lists what
@@ -61,7 +63,8 @@ prerequisite for parts of this document but not for all of it:
 | Stage 2 (taxonomy) | Nothing |
 | Stage 3 (retrieval) | Nothing |
 | Stage 4 (brief) | Hardening F1 and §4 Web Push — delivery is the point, and a brief nobody is told about is a brief nobody reads |
-| Stage 5 | Everything, plus §6 of this document |
+| Stage 5 (Reeve changes Reeve) | Hardening F4 for the decision path, F8's CI gates for the safety path. Substantially independent of Stages 1–4 |
+| Stage 6 | Everything, plus §6 of this document |
 
 Stage 0 below depends on nothing and should not wait for either document.
 
