@@ -52,9 +52,9 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
 
   // The field clears as soon as the capture is durable locally — never after
-  // a network round-trip, and never before the write has resolved.
+  // a network round-trip, and never before the write has resolved. There is no
+  // success toast: the departure animation is the acknowledgement (UI-6/UI-11).
   await expect(page.getByLabel("Capture a thought")).toHaveValue("");
-  await expect(page.getByText("Captured")).toBeVisible();
 
   await page.getByRole("navigation").getByRole("button", { name: "Inbox" }).click();
 
@@ -118,4 +118,14 @@ test("the capture button is inert with no text", async ({ page }) => {
     page.getByRole("main").getByRole("button", { name: /^Capture/ }),
     "whitespace is not a thought",
   ).toBeDisabled();
+});
+
+/** UI-12: the dot must not change the nav button's accessible name. */
+test("the inbox tab keeps its accessible name while showing the dot", async ({ page }) => {
+  await signIn(page);
+  await page.getByLabel("Capture a thought").fill(`dot check ${randomUUID().slice(0, 6)}`);
+  await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
+  await expect(
+    page.getByRole("navigation").getByRole("button", { name: "Inbox", exact: true }),
+  ).toBeVisible();
 });

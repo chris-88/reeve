@@ -102,7 +102,14 @@ export default function Inbox() {
    * false and execution used to fall straight through to the empty state —
    * telling someone who had been capturing all week that they had nothing.
    */
-  const offline = fetchStatus === "paused";
+  /**
+   * Trust the browser's connectivity signal, not the query's fetchStatus.
+   * After the persisted cache is restored offline, the query can settle to
+   * "idle" rather than "paused" — which made this read as online and let the
+   * inbox fall through to "Nothing captured yet", the exact failure F2 exists
+   * to prevent.
+   */
+  const offline = !online || fetchStatus === "paused";
   const showingStale = offline && captures.length > 0;
   const nothingYet = isSuccess && captures.length === 0 && !offline;
   const offlineAndEmpty = offline && captures.length === 0;

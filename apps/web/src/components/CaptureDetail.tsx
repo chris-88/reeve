@@ -4,6 +4,13 @@ import type { Area, Capture, Entities } from "@reeve/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -80,27 +87,20 @@ export default function CaptureDetail({
     onClose();
   }
 
+  /**
+   * UI-10: a phone expects swipe-down to dismiss; a full-screen Dialog only
+   * offers a small × in the corner. Drawer below sm, Dialog above, which is
+   * shadcn's documented responsive pattern.
+   */
+  const isDesktop = useMediaQuery("(min-width: 640px)");
+
   const entities = capture.entities;
   const populated = entities
     ? ENTITY_ORDER.filter((k) => entities[k]?.length).map((k) => [k, entities[k]] as const)
     : [];
 
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent
-        showCloseButton
-        // The title and body are the description; Radix only needs to be told
-        // this is deliberate rather than an omission.
-        aria-describedby={undefined}
-        className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 rounded-none p-0 sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl"
-      >
-        <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-4 text-left">
-          <DialogTitle className="pr-8 font-serif text-[1.35rem] leading-snug font-normal">
-            {capture.title ?? "Capture"}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6">
+  const body = (
+    <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6">
           {capture.summary && (
             <p className="font-serif text-[1.15rem] leading-relaxed">{capture.summary}</p>
           )}
@@ -228,8 +228,42 @@ export default function CaptureDetail({
               {capture.raw_text}
             </p>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </div>
+  );
+
+  const title = capture.title ?? "Capture";
+
+  if (isDesktop) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent
+          showCloseButton
+          // The title and body are the description; Radix only needs to be
+          // told this is deliberate rather than an omission.
+          aria-describedby={undefined}
+          className="flex max-h-[88vh] w-full max-w-lg flex-col gap-0 rounded-2xl p-0"
+        >
+          <DialogHeader className="border-border/60 shrink-0 border-b px-6 py-4 text-left">
+            <DialogTitle className="pr-8 font-serif text-[1.35rem] leading-snug font-normal">
+              {title}
+            </DialogTitle>
+          </DialogHeader>
+          {body}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()}>
+      <DrawerContent aria-describedby={undefined} className="max-h-[92dvh]">
+        <DrawerHeader className="border-border/60 shrink-0 border-b px-6 py-3 text-left">
+          <DrawerTitle className="font-serif text-[1.35rem] leading-snug font-normal">
+            {title}
+          </DrawerTitle>
+        </DrawerHeader>
+        {body}
+      </DrawerContent>
+    </Drawer>
   );
 }

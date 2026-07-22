@@ -34,6 +34,8 @@ export default function Capture({ userId }: { userId: string }) {
   const [saving, setSaving] = useState(false);
   const online = useOnline();
   const [header, setHeader] = useState(nowHeader);
+  /** The text on its way out. A ghost, so the real field is writable at once. */
+  const [departing, setDeparting] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // An installed PWA can be evicted from memory mid-sentence. Persist keystrokes.
@@ -68,9 +70,12 @@ export default function Capture({ userId }: { userId: string }) {
     setSaving(true);
     try {
       await enqueue(value, userId);
+      // Only now: the field is cleared after the local write is durable, and
+      // the draft goes with it so an eviction mid-animation cannot resurrect a
+      // thought that has already been captured.
       setText("");
       clearDraft();
-      toast("Captured", { description: "Filing it now." });
+      setDeparting(value);
       ref.current?.focus();
     } catch (err) {
       console.error("[reeve] enqueue failed", err);
@@ -102,7 +107,16 @@ export default function Capture({ userId }: { userId: string }) {
         unreliable. A <label> makes the whole field area the tap target without
         needing a click handler on a non-interactive element.
       */}
-      <label htmlFor="capture-field" className="min-h-0 flex-1 cursor-text px-6 pt-2">
+      <label htmlFor="capture-field" className="relative min-h-0 flex-1 cursor-text px-6 pt-2">
+        {departing !== null && (
+          <span
+            aria-hidden
+            onAnimationEnd={() => setDeparting(null)}
+            className="animate-depart pointer-events-none absolute inset-x-6 top-2 font-serif text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em] whitespace-pre-wrap"
+          >
+            {departing}
+          </span>
+        )}
         <Textarea
           id="capture-field"
           ref={ref}

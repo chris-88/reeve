@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { Inbox as InboxIcon, PenLine } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
-import { startOutboxWatcher } from "@/lib/outbox";
+import { startOutboxWatcher, subscribe } from "@/lib/outbox";
 import { requestPersistentStorage } from "@/lib/draft";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
@@ -22,6 +23,25 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [screen, setScreen] = useState<Screen>("capture");
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => subscribe((items) => setPendingCount(items.length)), []);
+
+  // Anything not yet filed, whether still local or already in the database.
+  const { data: unsettled = 0 } = useQuery({
+    queryKey: ["unsettled"],
+    enabled: !!session,
+    refetchInterval: 5000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("captures")
+        .select("id", { count: "exact", head: true })
+        .neq("status", "done");
+      return count ?? 0;
+    },
+  });
+
+  const inFlight = pendingCount + unsettled > 0;
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -72,7 +92,16 @@ export default function App() {
                 active ? "text-foreground" : "text-muted-foreground",
               )}
             >
-              <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+              <span className="relative">
+                <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+                {id === "inbox" && inFlight && (
+                  // Decorative: the accessible name must stay "Inbox".
+                  <span
+                    aria-hidden
+                    className="bg-foreground absolute -top-0.5 -right-1 size-1.5 rounded-full"
+                  />
+                )}
+              </span>
               <span className="text-xs font-medium">{label}</span>
             </button>
           );

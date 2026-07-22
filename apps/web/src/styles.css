@@ -146,6 +146,25 @@ select {
   outline: none;
 }
 
+/*
+ * The thought departs.
+ *
+ * Answers "where did it go?" physically rather than with a sentence of copy,
+ * and pays off the ArrowUp already in the button. Written as a CSS animation
+ * so the reduced-motion block below clamps it — a scripted animation would
+ * ignore that entirely.
+ */
+@keyframes depart {
+  to {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+}
+
+.animate-depart {
+  animation: depart 180ms ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
