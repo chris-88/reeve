@@ -1,6 +1,9 @@
 # Reeve: Architecture Spec — Phase 1
 
 Status: Proposed. Not yet approved to build
+Owner: spec-owned. Implementation runs in separate sessions — where this
+document is wrong, ambiguous or silent, raise it against the spec rather than
+deciding it in the diff.
 Extends: `docs/spec.md` (Phase 0)
 Sibling: `docs/arc-spec-pwa-hardening.md`
 Audience: implementing dev team

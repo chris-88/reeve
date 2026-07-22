@@ -1,6 +1,9 @@
 # Reeve: Architecture Spec — PWA Hardening
 
 Status: **P0 and P1 complete and deployed.** P2 outstanding.
+Owner: spec-owned. Implementation runs in separate sessions — where this
+document is wrong, ambiguous or silent, raise it against the spec rather than
+deciding it in the diff.
 Supersedes: nothing. Extends `docs/spec.md` (Phase 0)
 Audience: implementing dev team
 
@@ -33,7 +36,7 @@ change was made. All of them held.
   `e2e/offline.spec.ts`.
 - A row inserted directly into the database with `status = 'queued'` and no
   invoke reached `done` in **30 seconds** via the `pg_cron` sweeper.
-- 34 unit tests and 4 end-to-end tests pass. CI runs typecheck, lint, unit
+- 34 unit tests and 6 end-to-end tests pass. CI runs typecheck, lint, unit
   tests, build and Playwright on both Chromium and WebKit; deploy is gated on
   it.
 
