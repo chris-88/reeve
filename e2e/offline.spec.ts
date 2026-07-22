@@ -12,7 +12,25 @@ const PASSWORD = "e2e-" + "x".repeat(20);
  * network, a capture typed offline survives, and it syncs on reconnect.
  * None of this is exercisable against the dev server.
  */
-test("captures survive going offline and sync on reconnect", async ({ page, context }) => {
+test("captures survive going offline and sync on reconnect", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  /**
+   * Chromium only.
+   *
+   * Playwright's WebKit throws "WebKit encountered an internal error" on a
+   * reload while offline, so it cannot exercise a service-worker-served
+   * navigation at all. That is a harness limitation, not an app defect — the
+   * same assertions pass on Chromium.
+   *
+   * The consequence is real though: offline behaviour on the engine the app
+   * actually ships to is NOT covered by CI, and still has to be checked by
+   * hand on a device. WebKit continues to run every other test in the suite.
+   */
+  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
+
   await page.goto("/");
   await page.getByPlaceholder("you@example.com").fill(EMAIL);
   await page.getByPlaceholder("Password").fill(PASSWORD);
