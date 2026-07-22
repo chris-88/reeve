@@ -23,5 +23,8 @@ supabase/.temp/
 docs/spec.md
 supabase/seed/areas.json
 
+# Obsidian workspace state. docs/ is a vault as well as a directory.
+.obsidian/
+
 # Playwright
 .playwright/

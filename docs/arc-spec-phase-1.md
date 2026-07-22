@@ -1,7 +1,8 @@
 # Reeve: Architecture Spec — Phase 1
 
-Status: **Approved. Build ready** — Stage 0 through Stage 5. Stage 6 (§8)
-remains described, not built, and approval here does not extend to it.
+Status: **Stages 0–3 built and deployed.** Stages 4 and 5 remain approved and
+unbuilt; §0 records what blocks each. Stage 6 (§8) remains described, not
+built, and approval here does not extend to it.
 Owner: spec-owned. Implementation runs in separate sessions — where this
 document is wrong, ambiguous or silent, raise it against the spec rather than
 deciding it in the diff.
@@ -16,26 +17,21 @@ of the PWA hardening spec.
 
 ## 0. Implementation status
 
-Approved 22 July 2026. Nothing started.
-
-Update this table as features land, in the pattern of
-`docs/arc-spec-pwa-hardening.md` §0 — including the sections recording defects
-the spec failed to predict and gaps left open. Those two sections were the most
-useful output of the last implementation round and are not optional.
+Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
 
 | Stage | | Feature | Status |
 |---|---|---|---|
-| 0 | P0 | **P1-F0** `areas` ownership | ⬜ Not started |
-| 1 | P0 | **P1-F1** Commitments as rows | ⬜ Not started |
-| 1 | P0 | **P1-F2** The Due view | ⬜ Not started |
-| 2 | P1 | **P1-F3** Corrections report | ⬜ Not started |
-| 3 | P1 | **P1-F4** Cross-capture retrieval | ⬜ Not started |
+| 0 | P0 | **P1-F0** `areas` ownership | ✅ Done |
+| 1 | P0 | **P1-F1** Commitments as rows | ✅ Done |
+| 1 | P0 | **P1-F2** The Due view | ✅ Done |
+| 2 | P1 | **P1-F3** Corrections report | ✅ Done |
+| 3 | P1 | **P1-F4** Cross-capture retrieval | ✅ Done |
 | 4 | P0 | **P1-F5** Cost ceiling | ⬜ Not started |
-| 4 | P1 | **P1-F6** The daily brief | ⬜ Not started |
+| 4 | P1 | **P1-F6** The daily brief | ⛔ Blocked — needs Web Push |
 | 5 | P0 | **P1-F7** Change requests | ⬜ Not started |
 | 5 | P0 | **P1-F8** The drafting agent | ⬜ Not started |
-| 5 | P0 | **P1-F9** Filing, and the handoff | ⬜ Not started |
-| 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started |
+| 5 | P0 | **P1-F9** Filing, and the handoff | ⛔ Blocked — needs a GitHub token |
+| 5 | P1 | **P1-F10** Closing the loop | ⛔ Blocked — webhook secret, Web Push |
 | 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started |
 | 5 | P0 | **P1-F12** Guardrails | ⬜ Not started |
 | 6 | — | Approval ledger | 🚫 Not approved. Described only |
@@ -43,15 +39,143 @@ useful output of the last implementation round and are not optional.
 Priorities are **within a stage**, not across the document. §10 carries the
 sequencing and the reasoning behind it.
 
-### Before starting
+### The gates, answered
 
-Two items are gates rather than features and should be settled first:
+- **P1-F0.1 — sign-ups are disabled.** `disable_signup: true` on the Supabase
+  project, confirmed through the Management API. The `areas` exposure was
+  therefore **latent, not live**: no second account could be created to read
+  the classifier hints. F0.2 to F0.5 were built anyway — the assumption stops
+  being safe the moment a second account exists for any reason, and one did
+  exist, as the first defect below records.
+- **P1-F5** remains the gate it was. Nothing built in this round runs
+  unattended, so nothing built here needed it. It must land before P1-F6 or
+  P1-F8's scheduled pass, without exception.
 
-- **P1-F0.1** — confirm whether new sign-ups are enabled on the Supabase
-  project. This is a dashboard check, not a code change, and it determines
-  whether `areas` exposure is currently live or only latent.
-- **P1-F5** — the cost ceiling must exist before P1-F6 or P1-F8's scheduled
-  pass runs. Nothing unattended should also be unbounded.
+### What blocks Stages 4 and 5
+
+Three of these are Chris's to unblock; none can be worked around in code.
+
+| Blocked | Needs | Who |
+|---|---|---|
+| P1-F6 delivery (F6.7) | Web Push: VAPID keys, and the service-worker handlers `docs/arc-spec-pwa-hardening.md` §4 defers | Chris, then a session |
+| P1-F9 filing | A fine-grained GitHub PAT, single repository, `issues: write` and nothing else | Chris |
+| P1-F10 webhook | A webhook signing secret | Chris |
+| P1-F12.2 | Branch protection on `main` with the CI gates required | Chris |
+
+P1-F7 (the `change_requests` schema) and P1-F8 (the drafting agent) need none
+of the above and could be built before the token exists.
+
+### Verified against the acceptance criteria
+
+Against the live project, not a fixture:
+
+- A capture reading *"I'll ring the foreman Thursday about the pour, and I need
+  to send Mary the invoice by the end of the month"* produced two commitment
+  rows: `due_text = "Thursday"` → `2026-07-23`, and `due_text = "end of the
+  month"` → `2026-07-31`, both resolved against the capture's own timestamp.
+- Re-invoking triage on that capture produced no duplicate row, and did not
+  reset the commitment that had been marked done in between.
+- `scripts/backfill-commitments.mjs` run twice produced the same row count as
+  once.
+- A second account reads no areas, no captures and no commitments belonging to
+  the first, and cannot file into the first's areas — the last refused by the
+  composite foreign key rather than by a policy.
+- `retrieve_captures` returns a capture mentioning "Beaumont" when asked for
+  "Beaumnt", and returns nothing when one account asks for another's rows.
+- A commitment completed with the network off disappears immediately, is still
+  gone after a cold reload, and reaches `done` in the database on reconnect.
+  Covered by `e2e/offline.spec.ts`, Chromium only — the WebKit gap the
+  hardening spec records applies here unchanged.
+- 63 unit tests and 7 end-to-end tests pass. Typecheck, lint and the secret
+  scan are clean.
+
+### Where this document was wrong, ambiguous or silent
+
+Raised here rather than decided quietly in the diff, per the header.
+
+1. **Migration numbering.** P1-F0.2 says migration `0002`. That file exists,
+   is applied, and carries a SHA checksum that `scripts/migrate.mjs` refuses to
+   see change. Everything shifts by one: `0003` areas ownership, `0004`
+   commitments, `0005` corrections, `0006` retrieval, `0007` the threshold
+   calibration above.
+2. **Per-user `unsorted` needs a composite primary key.** P1-F0.3 calls
+   duplicating it "simpler than a special case" without noting that `id` was
+   the primary key, so two rows could not share the slug at all. `areas` is now
+   keyed on `(owner_id, id)`, and `captures.area_id` / `corrected_area_id`
+   became composite foreign keys with it. That turned out to be the better half
+   of the change: filing into another account's area is now refused by the
+   schema rather than by a check someone could forget to write.
+3. **P1-F0 does not mention the Edge Function.** `supabase/functions/triage`
+   loads areas through the service-role client, which bypasses RLS entirely —
+   so owner-scoping the policy would have left that query reading every
+   account's hints. It filters on `owner_id` explicitly now, the same
+   discipline P1-F4.4 asks for and for the same reason.
+4. **Structured commitments could not stay inside `entities`.** P1-F1.4 asks
+   for each commitment to carry a phrase and a resolved date; `entities` is
+   also the persisted jsonb shape the capture sheet renders. Commitments moved
+   to a top-level `TriageResult.commitments`, leaving `entities` a stable
+   display contract of people, dates, amounts and orgs. Captures triaged
+   earlier still carry the old key; nothing reads it, and the backfill lifts it.
+5. **P1-F2.3 and P1-F2.4 are in tension, and F2.3 wins.** A durable outbox and
+   "rollback on failure" cannot both hold: the outbox's entire purpose is that
+   a write survives until it lands. Queued changes are laid over the server
+   rows instead, so an unsynced completion survives a cold launch rather than
+   reappearing as undone, and a change that cannot sync is surfaced rather than
+   reverted. Reverting a tap made hours earlier in a field with no signal is
+   the data loss the outbox exists to prevent.
+
+### Five defects this spec did not predict
+
+1. **The ownership backfill picked the wrong account, and cost two correction
+   signals.** §2 says to add `owner_id` and move on; it does not say how
+   existing rows acquire one. The migration derives it — the account with the
+   most captures — which was sound reasoning against wrong data: the RLS test
+   account had accumulated **24 fixture captures against the owner's 5**, so
+   the eight real areas were assigned to a test account and the owner's own
+   captures were unfiled by the foreign key that followed. Repaired by
+   deleting the fixtures, re-seeding under the right account and re-triaging,
+   but `corrected_area_id` on two captures was nulled and is **not
+   recoverable** — nothing else records what the model had chosen. Two
+   data points out of an evidence base that P1-F3 exists to read.
+2. **Backoff was never reset when connectivity returned.** Every failed flush
+   while offline widens the next attempt, so a long enough outage pushed it
+   five minutes out and the queue then did nothing at the moment it finally
+   could. Found by the P1-F2 offline test sitting at `open` for a full sixty
+   seconds after reconnecting. `clearBackoff()` now runs on the `online` event;
+   dead-lettered items are deliberately left alone.
+3. **The default trigram threshold rejects this spec's own example.**
+   `word_similarity('Decklan', 'Ring Declan …')` is 0.500 against a default
+   cut-off of 0.6. 0.45 is the only band that admits the dictation errors and
+   still rejects "decking" at 0.429; migration `0007` carries the measurements.
+4. **Setting that threshold needs the extension loaded first.** Until pg_trgm's
+   library loads, `pg_trgm.word_similarity_threshold` is an unrecognised custom
+   GUC, and setting one of those requires superuser — which Supabase's
+   `postgres` role is not. A `select word_similarity(…)` ahead of the
+   `create function` is the whole fix, and the failure it prevents reads as a
+   permissions problem rather than a loading one.
+5. **Both test suites were reading the owner's real taxonomy.** The RLS and
+   end-to-end accounts had no areas of their own, so triage classified their
+   fixtures against the eight real `classifier_hint`s — which is precisely the
+   exposure P1-F0 closes, running on every CI run. Both suites now seed their
+   own invented taxonomy, and the RLS suite deletes its captures afterwards:
+   they were being triaged at real cost, and accumulating.
+
+### Gaps left open
+
+- **Trigram retrieval is orthographic, not phonetic.** "Shivaun" scores 0.125
+  against "Siobhan" — no shared trigrams, no shared lexeme, so neither half of
+  P1-F4 finds it. This is the P1-F4.2 observation category. Record misses of
+  this shape; they are what earns `pgvector`.
+- **Nothing reads `agent_runs.cost_usd` yet.** P1-F5 is untouched, so the
+  spend is still uncapped and unwatched. It is not urgent while every model
+  call is user-triggered, and it is a hard prerequisite the moment one is not.
+- **Re-filing a capture updates its commitments' area, but a commitment's own
+  area cannot be changed.** Changing it independently of its capture is not
+  possible in the UI, which seems right — the commitment belongs to the note
+  it came from — but it has not been used enough to be sure.
+- **The bundle is still one chunk**, and the `useInfiniteQuery` pagination the
+  hardening spec's F11 asks for still does not exist. The Due view fetches 200
+  rows the same way the Inbox does.
 
 ---
 

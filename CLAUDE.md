@@ -37,47 +37,39 @@ in a table alongside the specific observation that would earn it.
 ## Where things stand (2026-07-22)
 
 Phase 0 is live at `app.chrisquinn.ie`. Capture → triage → filed, offline
-capable, installable.
+capable, installable. **Phase 1 Stages 0–3 are live on top of it**: areas are
+owner-scoped, commitments are rows with due dates, and there is a third screen
+— Due — showing what is owed and when.
 
 | Document | Status |
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
-| `docs/arc-spec-phase-1.md` | **Approved 22 July 2026, Stages 0–5. Active work.** Stage 6 described but not approved |
+| `docs/arc-spec-phase-1.md` | **Stages 0–3 done. Stages 4–5 approved, unbuilt.** Stage 6 described but not approved |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
-### Phase 1 — the current build
+### Phase 1 — what is left
 
-Start at `docs/arc-spec-phase-1.md` §0 and follow the sequencing in §10.
-Stage 0 (`P1-F0`, `areas` ownership) depends on nothing and is the entry point.
+`docs/arc-spec-phase-1.md` §0 carries the full picture: what was verified, five
+defects the spec did not predict, and where the document was wrong or silent.
+Read it before starting anything below.
 
-Three things were checked against the live system after that spec was approved.
-They change what its early tickets require, so read them before starting:
+- **P1-F5 cost ceiling** is untouched and is a hard gate. Nothing built so far
+  runs unattended, so nothing needed it; it must land *with* the first
+  scheduled model call, not after.
+- **P1-F7 and P1-F8** — the `change_requests` schema and the drafting agent —
+  need no credential and can be built now.
+- **Everything else in Stages 4 and 5 is blocked on something only Chris can
+  provide**: VAPID keys for Web Push (P1-F6 delivery), a fine-grained GitHub
+  PAT scoped to one repository and `issues: write` (P1-F9), a webhook signing
+  secret (P1-F10), branch protection on `main` (P1-F12.2). Ask; do not
+  improvise a notification channel or a token in the diff.
 
-- **P1-F0.1 is already answered: sign-ups are disabled** (`disable_signup:
-  true`, anonymous sign-in off, confirmed against the Supabase management API
-  on 22 July 2026). They were turned off when auth moved from magic links to
-  email and password. So the `areas` exposure the spec describes is **latent,
-  not live** — it is still worth fixing, and the spec's reasoning is sound, but
-  nobody else can currently obtain a session. Treat it as P0 for correctness,
-  not as an incident.
-- **P1-F0.2 asks for migration `0002`. That number is taken** —
-  `0002_triage_guarantee.sql` landed with the hardening work and is applied.
-  Use `0003_areas_ownership.sql`. A second `0002_*` would not break
-  `scripts/migrate.mjs` (it tracks by filename, and `0002_areas…` sorts *before*
-  the applied `0002_triage…`), which is exactly why it would go unnoticed.
-  Check `pnpm db:status` before naming any migration.
-- **Stage 4 has an unbuilt dependency that is not a ticket anywhere.** The
-  spec's §1 table says Stage 4 needs "Hardening F1 and §4 Web Push". F1 is
-  done; **Web Push does not exist** — no `pushManager` call, no VAPID key, no
-  subscription table. It sits in the hardening spec's out-of-scope table (line
-  676) with its earning condition written as *"Phase 1's approval gate needs a
-  delivery channel"* — a condition this approval has now met. It needs speccing
-  before Stage 4 or Stage 5's approval gate can be delivered. Raise it; do not
-  improvise a notification channel in the diff.
-
-Stage 1 depends on hardening F3 and F4 (both done). Stage 5 depends on F4 and
-F8's CI gates (both done). Nothing in Stages 0–3 is blocked.
+Web Push still does not exist — no `pushManager` call, no VAPID key, no
+subscription table. It sits in the hardening spec's §4 out-of-scope table with
+its earning condition written as *"Phase 1's approval gate needs a delivery
+channel"*, a condition the Phase 1 approval has now met. **It needs speccing
+before Stage 4 or Stage 5's gate can be delivered.**
 
 ### Also outstanding — hardening P2
 
@@ -86,16 +78,17 @@ Lower priority than Phase 1, but F10 is the one with a cost today.
 - **F9 Realtime resilience** — resubscribe on `visibilitychange`, handle
   `CHANNEL_ERROR`/`TIMED_OUT`, add a `user_id` filter to the subscription,
   apply the payload to the cache instead of invalidating, tear down when
-  backgrounded.
+  backgrounded. There are now **two** channels subscribed this way, `captures`
+  and `commitments`, so the fix is worth doing once and sharing.
 - **F10 Session lifecycle** — there is no sign-out. A session in a bad state is
   currently unrecoverable without developer tools, and the persisted query
-  cache has to be purged with it (**but not the outbox** — unsent captures
-  belong to the device, not the session). Note that Phase 1's P1-F0 makes this
-  sharper: the moment `areas` is owner-scoped, testing it needs a second
-  account, and there is no way to switch accounts.
+  cache has to be purged with it (**but not the outbox** — unsent work belongs
+  to the device, not the session). Now sharper: `areas` is owner-scoped, so
+  testing it by hand needs a second account and there is no way to switch.
 - **F11 Smaller items** — `useInfiniteQuery` pagination, code splitting (the
   bundle is one ~628 KB chunk), document the JWT-pattern caveat in
-  `check-bundle.mjs`.
+  `check-bundle.mjs`. The Due view fetches 200 rows the same way the Inbox
+  does, so pagination now has two call sites.
 
 **Two things belong to Chris and should not be decided for him:**
 
@@ -115,12 +108,18 @@ pnpm dev              # Vite dev server. No service worker here — devOptions.e
 pnpm build            # tsc --noEmit, vite build, then the secret scan
 pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
-pnpm test             # vitest, 34 tests
-pnpm test:e2e         # playwright, 6 tests; builds and previews first
+pnpm test             # vitest, 63 tests
+pnpm test:e2e         # playwright, 7 tests; builds and previews first
 pnpm db:migrate       # apply supabase/migrations in order
 pnpm db:status        # what is applied, what is pending
-pnpm db:seed          # areas, from the gitignored supabase/seed/areas.json
+pnpm db:seed --owner you@example.com   # areas, from the gitignored seed file
+pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
+pnpm triage:report                     # which classifier_hint to edit first
 ```
+
+`db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
+seeded without one is readable by nobody — a silent failure that looks like a
+broken app rather than a missing flag.
 
 Deploying the Edge Function is not in `package.json` because it needs the
 Supabase CLI and an access token:
@@ -135,6 +134,36 @@ supabase functions deploy triage --project-ref <ref>
 ## Things that cost hours
 
 Each of these was learned the expensive way. They are not visible in the code.
+
+**The test accounts had more data than the real one, and a migration believed
+them.** `0003_areas_ownership.sql` had to give every existing `areas` row an
+owner and could not name one — the repo is public — so it derived the account
+with the most captures. The RLS suite had accumulated **24 fixture captures
+against the owner's 5**, so the real areas were assigned to a test account and
+the owner's own captures were unfiled by the foreign key that followed. Two
+`corrected_area_id` values were lost and are not recoverable. Both suites now
+seed their own invented taxonomy and clean up after themselves. **Before any
+migration that infers something from the data, check what is actually in the
+table** — `select u.email, count(*) from auth.users u join captures c on
+c.user_id = u.id group by 1`.
+
+**Both test suites were classifying against the owner's real taxonomy.** The
+RLS and end-to-end accounts had no areas, so triage read the eight real
+`classifier_hint`s — the exact exposure P1-F0 exists to close, on every CI run,
+at real cost. Test accounts get their own fixtures now. If you add a suite that
+triages anything, give its account its own areas including `unsorted`.
+
+**An applied migration cannot be edited** — `scripts/migrate.mjs` compares SHA
+checksums and refuses. That is why the retrieval threshold lives in `0007`
+rather than in `0006` where it belongs. Get a migration right before applying
+it; `pnpm db:status` shows what is pending.
+
+**`pg_trgm.word_similarity_threshold` cannot be set in a function until the
+extension's library has loaded.** Until then it is an unrecognised custom GUC,
+and setting one requires superuser — which Supabase's `postgres` role is not.
+A `select word_similarity('a','b');` ahead of the `create function` fixes it.
+The error says "permission denied to set parameter", which sends you looking at
+roles rather than at loading.
 
 **Docker is not available on this machine.** `supabase db push` and `db dump`
 shell out to it and will fail. `scripts/migrate.mjs` connects to Postgres
