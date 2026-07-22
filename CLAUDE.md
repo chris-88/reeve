@@ -41,10 +41,10 @@ capable, installable.
 
 | Document | Status |
 |---|---|
-| `docs/spec.md` | Phase 0. Shipped. **Gitignored** — personal content |
-| `docs/ui-spec.md` | All 20 tickets done, deployed |
+| `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done. **F9, F10, F11 outstanding.** F7 deferred pending a Sentry DSN |
 | `docs/arc-spec-phase-1.md` | Proposed. **Not approved to build** |
+| `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
 **Outstanding, in the order the spec argues for:**
 
@@ -62,7 +62,7 @@ capable, installable.
 
 **Two things belong to Chris and should not be decided for him:**
 
-1. The three open questions in `docs/ui-spec.md` §9 — particularly *is the
+1. The three open questions in `docs/archive/ui-spec.md` §9 — particularly *is the
    Inbox a log or a queue*, which the spec itself notes resolves UI-8, UI-12
    and the archive question differently depending on the answer.
 2. The real-device check: aeroplane mode, cold launch from the home screen on

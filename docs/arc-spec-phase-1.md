@@ -713,7 +713,7 @@ avoid elsewhere.
 
 ### P1-F11 — Where this lives in the UI
 
-**Not a third nav item.** `docs/ui-spec.md`'s governing principle — *the thought
+**Not a third nav item.** `docs/archive/ui-spec.md`'s governing principle — *the thought
 is fleeting; everything on screen either serves capturing it or gets deleted* —
 applies with full force, and this is a weekly activity competing for space with
 a daily one.
