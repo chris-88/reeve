@@ -89,3 +89,110 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
 });
+
+/* ---------------------------------------------------------------------------
+ * Web Push
+ *
+ * The payload carries identifiers and titles the user wrote themselves — never
+ * `raw_text`, never a commitment body, never model output (WP-F3.4). A
+ * notification renders on a lock screen, which is a more exposed surface than
+ * the telemetry hardening F7.4 already scrubs.
+ * ------------------------------------------------------------------------- */
+
+type PushPayload = {
+  title?: string;
+  body?: string;
+  /** In-app path to open. Defaults to the root. */
+  url?: string;
+  /** Collapses replacements of the same logical notification. */
+  tag?: string;
+};
+
+/**
+ * WP-F3.1.
+ *
+ * A notification is shown even when the payload is missing or unparseable. iOS
+ * revokes the permission from an app that receives a push and displays
+ * nothing, and the permission cannot be requested again — so showing something
+ * slightly wrong is recoverable and showing nothing is not.
+ */
+self.addEventListener("push", (event) => {
+  let payload: PushPayload;
+  try {
+    payload = (event.data?.json() as PushPayload | undefined) ?? {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title?.trim() || "Reeve";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body?.trim() || undefined,
+      tag: payload.tag,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: payload.url ?? "/" },
+    }),
+  );
+});
+
+/**
+ * WP-F3.2: focus what is already open rather than opening a second window.
+ *
+ * `launch_handler: focus-existing` in the manifest tells the platform the same
+ * thing; this is the half that runs when the platform hands the click to the
+ * worker instead.
+ */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(
+    (event.notification.data as { url?: string } | undefined)?.url ?? "/",
+    self.location.origin,
+  );
+
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        if (new URL(client.url).origin !== target.origin) continue;
+        await client.focus();
+        if ("navigate" in client && client.url !== target.href) {
+          await client.navigate(target.href).catch(() => {});
+        }
+        return;
+      }
+      await self.clients.openWindow(target.href);
+    })(),
+  );
+});
+
+/**
+ * WP-F3.3: the subscription was rotated by the push service.
+ *
+ * The worker has no Supabase client and no session, so it cannot write the new
+ * endpoint itself. It asks an open page to do it, and only falls back to a
+ * bare REST call when no page is open — that fallback is best-effort, because
+ * the anon key alone cannot satisfy the owner-scoped insert policy. The
+ * durable repair is `syncSubscription()` on next launch; this just shortens
+ * the window in which pushes silently go nowhere.
+ */
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const oldEndpoint = (event as PushSubscriptionChangeEvent).oldSubscription?.endpoint;
+      for (const client of clients) {
+        client.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED", oldEndpoint });
+      }
+    })(),
+  );
+});
+
+/** Not in TypeScript's lib.dom yet, and only the two fields are used. */
+interface PushSubscriptionChangeEvent extends ExtendableEvent {
+  readonly oldSubscription?: PushSubscription;
+  readonly newSubscription?: PushSubscription;
+}

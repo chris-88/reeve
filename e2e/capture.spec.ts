@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { assertNoAccumulation, purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -11,23 +12,37 @@ const PASSWORD = "e2e-" + "x".repeat(20);
 
 const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
 
+let testUserId: string | undefined;
+
+/**
+ * P1-F13.3: clean up on the way out as well as on the way in.
+ *
+ * Cleaning only in `beforeAll` leaves the last run's fixtures sitting in the
+ * live project until the next one — which is how a test account came to hold
+ * more captures than the owner, and how a migration came to believe it was the
+ * owner. Runs whether the suite passed or failed.
+ */
+test.afterAll(async () => {
+  if (testUserId) await purgeTestData(admin, testUserId);
+  const offenders = await assertNoAccumulation(admin);
+  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
+});
+
 test.beforeAll(async () => {
-  const { error } = await admin.auth.admin.createUser({
-    email: EMAIL,
-    password: PASSWORD,
-    email_confirm: true,
-  });
-  if (error && !/already|registered/i.test(error.message)) throw error;
+  await retryAuth(
+    () => admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true }),
+    { accept: (e) => /already|registered/i.test(e.message) },
+  );
 
   // Clear this user's captures between runs. Without it, rows accumulate in the
   // real project and repeated runs produce duplicate titles, which turn strict
   // locators into false failures. Scoped to the test account only.
   // Commitments go with the captures by cascade.
-  const { data: users } = await admin.auth.admin.listUsers();
+  const users = await retryAuth(() => admin.auth.admin.listUsers());
   const testUser = users.users.find((u) => u.email === EMAIL);
   if (testUser) {
-    await admin.from("agent_runs").delete().eq("user_id", testUser.id);
-    await admin.from("captures").delete().eq("user_id", testUser.id);
+    testUserId = testUser.id;
+    await purgeTestData(admin, testUser.id);
 
     /**
      * The test account needs its own taxonomy.

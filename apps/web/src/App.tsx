@@ -7,6 +7,7 @@ import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
 import { startOutboxWatcher, subscribe } from "@/lib/outbox";
 import { requestPersistentStorage } from "@/lib/draft";
+import { syncSubscription, watchSubscriptionChanges } from "@/lib/push";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
@@ -64,7 +65,22 @@ export default function App() {
     // Ask to be exempt from eviction. The outbox and the draft both live in
     // storage Safari will clear after ~7 days of non-use otherwise.
     void requestPersistentStorage();
-    return startOutboxWatcher();
+
+    /**
+     * Reconcile the push subscription on every launch.
+     *
+     * A push service rotates an endpoint without asking, and the service
+     * worker that hears about it has no session to write the new one with. The
+     * watcher shortens the window; this is what actually closes it.
+     */
+    void syncSubscription(session.user.id);
+    const stopWatchingPush = watchSubscriptionChanges(session.user.id);
+    const stopOutbox = startOutboxWatcher();
+
+    return () => {
+      stopWatchingPush();
+      stopOutbox();
+    };
   }, [session]);
 
   if (!ready) {

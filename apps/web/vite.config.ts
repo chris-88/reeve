@@ -55,6 +55,12 @@ export default defineConfig({
         categories: ["productivity", "utilities"],
         start_url: "/",
         scope: "/",
+        /**
+         * WP-F3.2. Tapping a notification must return to the app that is
+         * already open, not start a second copy alongside it — two windows
+         * means two outboxes racing the same queue.
+         */
+        launch_handler: { client_mode: "focus-existing" },
         display: "standalone",
         display_override: ["standalone", "minimal-ui"],
         background_color: "#0c0b0d",

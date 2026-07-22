@@ -36,6 +36,18 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: pnpm test
 
+      # P1-F13.5: fixtures accumulating in the live project is the early,
+      # silent symptom of a suite that stopped tearing down — and the state
+      # that misled the ownership backfill into destroying real data. Runs
+      # even when the suite failed, because a failed suite is exactly when
+      # teardown is most likely to have been skipped.
+      - name: Test accounts are clean
+        if: always()
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: node scripts/check-test-accounts.mjs
+
       - name: Build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
@@ -65,6 +77,18 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: pnpm test:e2e
+
+      # P1-F13.5: fixtures accumulating in the live project is the early,
+      # silent symptom of a suite that stopped tearing down — and the state
+      # that misled the ownership backfill into destroying real data. Runs
+      # even when the suite failed, because a failed suite is exactly when
+      # teardown is most likely to have been skipped.
+      - name: Test accounts are clean
+        if: always()
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: node scripts/check-test-accounts.mjs
 
       - uses: actions/upload-artifact@v4
         if: failure()

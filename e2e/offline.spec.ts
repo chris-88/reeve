@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { assertNoAccumulation, purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -9,6 +10,20 @@ const EMAIL = "e2e@reeve.test";
 const PASSWORD = "e2e-" + "x".repeat(20);
 
 const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
+
+/**
+ * P1-F13.3. This suite writes captures through the UI, so a failed run leaves
+ * them behind unless teardown is unconditional and scoped by account rather
+ * than by the ids a passing run happened to collect.
+ */
+test.afterAll(async () => {
+  const users = await retryAuth(() => admin.auth.admin.listUsers());
+  const testUser = users.users.find((u) => u.email === EMAIL);
+  if (testUser) await purgeTestData(admin, testUser.id);
+
+  const offenders = await assertNoAccumulation(admin);
+  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
+});
 
 /**
  * The acceptance test for F1 through F4 together: the shell boots with no
@@ -111,7 +126,7 @@ test("a commitment completed offline survives a cold reload and syncs", async ({
   test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
 
   const marker = randomUUID().slice(0, 8);
-  const { data: users } = await admin.auth.admin.listUsers();
+  const users = await retryAuth(() => admin.auth.admin.listUsers());
   const userId = users.users.find((u) => u.email === EMAIL)!.id;
 
   const { data: capture } = await admin
@@ -182,8 +197,6 @@ test("a commitment completed offline survives a cold reload and syncs", async ({
       { timeout: 60_000, intervals: [1500] },
     )
     .toBe("done");
-
-  await admin.from("captures").delete().eq("id", capture!.id);
 });
 
 /** UI-3: offline must read as offline, not as an endless spinner. */

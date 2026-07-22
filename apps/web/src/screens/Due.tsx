@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CloudOff, ListChecks, WifiOff } from "lucide-react";
+import { Check, CloudOff, ListChecks, Settings2, WifiOff } from "lucide-react";
 import type { Area, Commitment } from "@reeve/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import CommitmentDetail from "@/components/CommitmentDetail";
+import Settings from "@/components/Settings";
 import { supabase } from "@/lib/supabase";
 import { enqueueCommitmentPatch, pendingPatch, subscribe, type PendingOp } from "@/lib/outbox";
 import { useOnline } from "@/lib/useOnline";
@@ -41,6 +42,7 @@ function dueLabel(dueAt: string | null, dueText: string | null): string | null {
 export default function Due({ userId }: { userId: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState<Commitment | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pending, setPending] = useState<PendingOp[]>([]);
   const online = useOnline();
 
@@ -138,8 +140,21 @@ export default function Due({ userId }: { userId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="shrink-0 px-6 pt-8 pb-3">
+      <header className="flex shrink-0 items-baseline justify-between px-6 pt-8 pb-3">
         <h1 className="font-serif text-[1.75rem] leading-none font-normal">Due</h1>
+        {/*
+          One icon, on the screen about being told things. Settings has no home
+          in a three-screen app and this is the least intrusive one that exists
+          — it is also where sign-out belongs when hardening F10 lands.
+        */}
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Settings"
+          className="text-muted-dim hover:text-foreground -mr-2 p-2 transition-colors"
+        >
+          <Settings2 className="size-5" strokeWidth={1.8} aria-hidden />
+        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
@@ -273,6 +288,8 @@ export default function Due({ userId }: { userId: string }) {
           onClose={() => setOpen(null)}
         />
       )}
+
+      {settingsOpen && <Settings userId={userId} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

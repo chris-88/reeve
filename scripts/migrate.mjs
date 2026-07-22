@@ -4,6 +4,14 @@
 // We use this rather than `supabase db push` because that shells out to Docker,
 // which isn't available here. Each migration runs in its own transaction and is
 // recorded in _reeve_migrations, so re-running is a no-op.
+//
+//   node scripts/migrate.mjs             # apply
+//   node scripts/migrate.mjs --status    # what is applied, what is pending
+//   node scripts/migrate.mjs --dry-run   # apply, report, roll everything back
+//   node scripts/migrate.mjs --yes       # apply, including rewrites of existing rows
+//
+// A migration that rewrites existing rows is rolled back and refused unless
+// --yes is passed. See P1-F13.6, and P1-F0.7 for the incident that earned it.
 
 import { readdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -16,6 +24,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: path.join(ROOT, ".env.local"), quiet: true });
 const MIGRATIONS_DIR = path.join(ROOT, "supabase", "migrations");
 const statusOnly = process.argv.includes("--status");
+const dryRun = process.argv.includes("--dry-run");
+const confirmed = process.argv.includes("--yes");
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -81,7 +91,49 @@ try {
 
     try {
       await client.query("begin");
-      await client.query(sql);
+      const results = await client.query(sql);
+
+      // P1-F13.6: report what this touched before it is allowed to stand.
+      //
+      // Counted from the transaction rather than guessed from the text, so a
+      // migration with an `update` inside a function body — never called, and
+      // therefore harmless — does not trip the gate, and one that rewrites
+      // rows through a construct nobody thought to grep for still does.
+      const touched = (Array.isArray(results) ? results : [results])
+        .filter((r) => r?.command === "UPDATE" || r?.command === "DELETE")
+        .reduce((sum, r) => sum + (r.rowCount ?? 0), 0);
+
+      if (touched > 0) {
+        console.log(`  ${name} rewrites ${touched} existing row(s).`);
+      }
+
+      /**
+       * A migration that rewrites existing rows does not apply on the first
+       * ask.
+       *
+       * `0003_areas_ownership.sql` derived ownership from row counts, picked
+       * the test account because it held more fixtures than the owner held
+       * real captures, and destroyed two `corrected_area_id` signals that
+       * nothing else recorded. It ran clean and reported success. The count
+       * above is what would have made it obvious, so seeing it is now a
+       * separate step from accepting it.
+       */
+      if (dryRun || (touched > 0 && !confirmed)) {
+        await client.query("rollback");
+        if (dryRun) {
+          console.log(`… ${name} (rolled back, dry run)`);
+        } else {
+          console.error(
+            `\n✗ ${name} was rolled back: it rewrites ${touched} existing row(s).\n` +
+              `  Check what those rows are before applying it. Migrations do not\n` +
+              `  respect test-account scoping — see P1-F0.7.\n\n` +
+              `  Re-run with --yes to apply it.`,
+          );
+          process.exit(1);
+        }
+        continue;
+      }
+
       await client.query("insert into _reeve_migrations (name, checksum) values ($1, $2)", [
         name,
         checksum,
@@ -98,7 +150,7 @@ try {
   console.log(
     pending === 0
       ? "Up to date."
-      : statusOnly
+      : statusOnly || dryRun
         ? `${pending} migration(s) pending.`
         : `Applied ${pending} migration(s).`,
   );

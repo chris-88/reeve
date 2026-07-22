@@ -11,6 +11,16 @@ import { z } from "zod";
 const Env = z.object({
   VITE_SUPABASE_URL: z.url(),
   VITE_SUPABASE_ANON_KEY: z.string().min(20),
+  /**
+   * WP-F1.4. Public by design — `pushManager.subscribe` needs it client-side.
+   *
+   * Checked at boot rather than at the moment someone taps "notify me": a
+   * denied permission cannot be re-requested, so a misconfiguration that only
+   * surfaces at the tap burns the one chance the app gets to ask.
+   *
+   * 65 uncompressed P-256 bytes, base64url — 87 characters.
+   */
+  VITE_VAPID_PUBLIC_KEY: z.string().min(80),
 });
 
 const parsed = Env.safeParse(import.meta.env);

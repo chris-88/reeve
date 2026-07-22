@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
+import { assertNoAccumulation, purgeTestData, retryAuth } from "./support/test-accounts.ts";
 
 dotenv.config({ path: ".env.local", quiet: true });
 
@@ -50,19 +51,15 @@ async function seedAreas(ownerId: string, ids: readonly string[]): Promise<void>
 }
 
 async function signIn(email: string): Promise<{ client: SupabaseClient; id: string }> {
-  const { error } = await admin.auth.admin.createUser({
-    email,
-    password: PASSWORD,
-    email_confirm: true,
-  });
-  if (error && !/already|registered/i.test(error.message)) throw error;
+  await retryAuth(
+    () => admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true }),
+    { accept: (e) => /already|registered/i.test(e.message) },
+  );
 
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
-  const { data, error: signInError } = await client.auth.signInWithPassword({
-    email,
-    password: PASSWORD,
-  });
-  if (signInError) throw signInError;
+  // Retried: the auth API's transient 403 lands here as readily as anywhere,
+  // and a suite that cannot sign in fails all 22 of its tests at once.
+  const data = await retryAuth(() => client.auth.signInWithPassword({ email, password: PASSWORD }));
   return { client, id: data.user.id };
 }
 
@@ -111,14 +108,21 @@ beforeAll(async () => {
 });
 
 /**
+ * P1-F13.3: everything this suite created, removed.
+ *
  * These run against the real project, and the pg_cron sweeper triages anything
- * it finds sitting at 'queued'. Left behind, every CI run would add fixtures
- * to the capture list and a model call to the bill. Deleted via the service
- * key, because there is deliberately no delete policy for the client — and
- * commitments go with them by cascade.
+ * it finds sitting at 'queued'. Left behind, every run adds fixtures to the
+ * capture list and a model call to the bill — and enough of them misled a
+ * migration into destroying real data. Scoped by user rather than by the ids
+ * this file happens to remember, so a run that fails half way still cleans up
+ * what it managed to create.
  */
 afterAll(async () => {
-  await admin.from("captures").delete().in("id", [aliceCaptureId, aliceNameCaptureId]);
+  await purgeTestData(admin, aliceId);
+  await purgeTestData(admin, bobId);
+
+  const offenders = await assertNoAccumulation(admin);
+  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
 });
 
 describe("anonymous access", () => {
