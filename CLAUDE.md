@@ -45,9 +45,30 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
 | `docs/arc-spec-phase-1.md` | **Complete — Stages 0–5 done and deployed.** Stage 6 described but not approved |
+| `docs/arc-spec-attention-queue.md` | **Built on branch `attention-queue`** (worktree `../reeve-inbox-board`). The middle of the app is now "Needs you", not the old Inbox. See its §0. Not yet merged |
+| `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding** |
 | `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
+
+### The attention queue (branch `attention-queue`, not merged)
+
+The middle of the app was reconsidered mid-build: a kanban board is a workspace
+you *maintain*, so it was replaced by an **attention queue** — "Needs you" — a
+stream of decisions the AI orders and the human only judges. Built in an
+isolated worktree, all of AQ-1…AQ-6, 102 unit + 7 e2e passing. What a merging
+session must know:
+
+- **Migration `0014_actions_and_archive.sql` is applied to the shared DB**, and
+  the **triage function is deployed** with the producer (an actionable capture
+  becomes a proposed action). Both were done from the branch; `main` ignores
+  the new `actions` table until merge. An earlier `0014_tasks_and_archive`
+  (from the abandoned board draft) was applied and then reverted — check
+  `pnpm db:status` before naming a migration.
+- **The Inbox tab is retired.** `Inbox.tsx` and `ReeveChangeRequests.tsx` (the
+  F11 change-request review UI) are kept in the tree but off the nav; re-homing
+  that review into "Needs you" is the flagged AQ-4 follow-up.
+- Full remaining-work picture is in `arc-spec-attention-queue.md` §0.
 
 ### Phase 1 — what is left
 
