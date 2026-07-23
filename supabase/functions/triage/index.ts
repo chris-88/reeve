@@ -155,6 +155,28 @@ Deno.serve(async (req) => {
       })
       .eq("id", captureId);
 
+    // AQ-3 producer: an actionable capture becomes a proposed action, so it
+    // surfaces in "Needs you". Conservative per the spec's §8 Q1 — only a
+    // capture that carries a commitment is treated as actionable; the rest stay
+    // filed as reference, findable in Search.
+    //
+    // Best-effort, after 'done' and deliberately non-fatal: filing is the
+    // guarantee, and a convenience layered on top must never block or fail a
+    // capture. A producer error leaves a filed capture with no action, which is
+    // recoverable; a thrown one would put a durable thought back in the retry
+    // queue, which is the failure this whole system exists to avoid.
+    try {
+      await writeProposedAction(db, {
+        captureId,
+        userId: capture.user_id,
+        areaId,
+        title: result.title,
+        actionable: result.commitments.some((c) => c.text.trim().length > 0),
+      });
+    } catch (actionErr) {
+      console.error(`[triage] proposed action for ${captureId} failed`, actionErr);
+    }
+
     await log(db, { userId: capture.user_id, captureId, usage, started, ok: true });
     return json({ status: "done", area_id: areaId });
   } catch (err) {
@@ -229,6 +251,38 @@ async function writeCommitments(
   // Thrown, not swallowed: the caller's catch marks the capture for retry, and
   // the upsert above is safe to replay.
   if (error) throw new Error(`commitments: ${error.message}`);
+}
+
+/**
+ * AQ-3: promote an actionable capture into a proposed action.
+ *
+ * Idempotent — one action per capture in v1 — so re-triage (the sweeper, the
+ * retry button) does not stack duplicates. The title is the capture's own; a
+ * richer "draft the invoice for Mary" phrasing is a later model call, not now.
+ * Non-actionable captures produce nothing and stay reference notes.
+ */
+async function writeProposedAction(
+  db: SupabaseClient,
+  o: { captureId: string; userId: string; areaId: string; title: string; actionable: boolean },
+): Promise<void> {
+  if (!o.actionable) return;
+
+  const { data: existing, error: readError } = await db
+    .from("actions")
+    .select("id")
+    .eq("capture_id", o.captureId)
+    .limit(1);
+  if (readError) throw new Error(`action lookup: ${readError.message}`);
+  if (existing && existing.length > 0) return;
+
+  const { error } = await db.from("actions").insert({
+    user_id: o.userId,
+    capture_id: o.captureId,
+    area_id: o.areaId,
+    title: o.title,
+    status: "proposed",
+  });
+  if (error) throw new Error(`action: ${error.message}`);
 }
 
 /** One model call, validated. Retries once with the validation error appended. */
