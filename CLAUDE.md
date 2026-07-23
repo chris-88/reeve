@@ -190,6 +190,27 @@ supabase secrets set --project-ref <ref> \
 
 Each of these was learned the expensive way. They are not visible in the code.
 
+**The two CI jobs share one free-tier Supabase project, so they must not
+run at once.** `check` and `e2e` both hit the live project — auth, PostgREST,
+realtime, edge functions, and the model calls triage makes. Run in parallel
+they put it under enough combined load that whichever job hit the contention
+window failed on latency: a `beforeAll` stalling past its budget, a capture
+stuck at `processing`, a sign-in hanging. The tests are green in isolation and
+locally, where only one suite runs at a time — the flake was the collision. It
+took five red runs to see it, because each failure moved to a different suite
+and looked like a different bug. `e2e` now `needs: check`, so one suite touches
+the project at a time. **The tests are coupled to a live backend by design; do
+not add a third thing that hammers it concurrently without making it sequential
+too.**
+
+**Resolve a test account by signing in, not through the auth admin API.**
+`admin.auth.admin.createUser` and `listUsers` (GoTrue admin) are markedly less
+reliable under load than an ordinary password sign-in, and were the single
+biggest source of hook timeouts. `signInTestUser` in `tests/support` signs in
+first and creates only on a first-ever run; every suite uses it. A normal
+`signInWithPassword` also returns the user id, so `listUsers` is gone from the
+hot path.
+
 **A shared module must not reach for one runtime's globals.**
 `packages/shared` compiles against ES2022 with no DOM, because it runs in the
 browser, in Deno and in Node. WinterCG globals it needs — `fetch`, `crypto`,

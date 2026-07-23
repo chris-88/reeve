@@ -57,6 +57,13 @@ jobs:
         run: pnpm build
 
   e2e:
+    # Sequential, not parallel. Both suites run against one free-tier Supabase
+    # project, and running them at once put it under enough combined load —
+    # connections, realtime, edge invocations, and the model calls triage makes
+    # — that whichever job lost the contention window failed on latency. The
+    # tests are green in isolation; the flake was the two jobs colliding. Making
+    # e2e wait for check means only one suite ever touches the project at a time.
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
