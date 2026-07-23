@@ -104,6 +104,14 @@ body,
   height: 100%;
 }
 
+/* Installed to the iOS home screen with viewport-fit=cover, `height: 100%` does
+   not reliably track the standalone viewport, so the flex column comes up short
+   and the bottom nav floats above an empty strip. `100dvh` tracks the real
+   installed-PWA viewport; the `100%` above stays as the fallback. */
+#root {
+  height: 100dvh;
+}
+
 body {
   /* A very slight lift at the top keeps the screen from reading as flat black. */
   background:

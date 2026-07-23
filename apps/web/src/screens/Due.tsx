@@ -141,7 +141,7 @@ export default function Due({ userId }: { userId: string }) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 items-baseline justify-between px-6 pt-8 pb-3">
-        <h1 className="font-serif text-[1.75rem] leading-none font-normal">Due</h1>
+        <h1 className="font-serif text-[1.45rem] leading-none font-normal sm:text-[1.75rem]">Due</h1>
         {/*
           One icon, on the screen about being told things. Settings has no home
           in a three-screen app and this is the least intrusive one that exists
