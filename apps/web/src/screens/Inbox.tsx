@@ -8,6 +8,7 @@ import { captureOps, subscribe, type CaptureOp, type PendingOp } from "@/lib/out
 import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
 import CaptureDetail from "@/components/CaptureDetail";
+import ReeveChangeRequests from "@/components/ReeveChangeRequests";
 
 function relativeTime(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
@@ -28,7 +29,7 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" });
 }
 
-export default function Inbox() {
+export default function Inbox({ userId }: { userId: string }) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<string | null>(null);
   const [open, setOpen] = useState<Capture | null>(null);
@@ -126,7 +127,7 @@ export default function Inbox() {
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 px-6 pt-8 pb-3">
-        <h1 className="font-serif text-[1.75rem] leading-none font-normal">Inbox</h1>
+        <h1 className="font-serif text-[1.45rem] leading-none font-normal sm:text-[1.75rem]">Inbox</h1>
       </header>
 
       {used.length > 0 && (
@@ -146,6 +147,12 @@ export default function Inbox() {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
+        {/*
+          F11.1: the reeve chip is the entry to changing Reeve. Only here — a
+          weekly activity that must not take space from the daily one.
+        */}
+        {filter === "reeve" && <ReeveChangeRequests userId={userId} reeveCaptures={visible} />}
+
         {pending.length > 0 && (
           <ul className="mb-2 space-y-1">
             {pending.map((p) => (

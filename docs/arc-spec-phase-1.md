@@ -1,8 +1,9 @@
 # Reeve: Architecture Spec — Phase 1
 
-Status: **Stages 0–3 built and deployed.** Stages 4 and 5 remain approved and
-unbuilt; §0 records what blocks each. Stage 6 (§8) remains described, not
-built, and approval here does not extend to it.
+Status: **Phase 1 complete — Stages 0–5 built and deployed (23 July 2026).**
+The loop closes: a thought dictated about the app becomes a filed, reviewed,
+merged change, and Reeve is told when it ships. Stage 6 (§8) remains described,
+not built, and approval here does not extend to it.
 Owner: spec-owned. Implementation runs in separate sessions — where this
 document is wrong, ambiguous or silent, raise it against the spec rather than
 deciding it in the diff.
@@ -17,7 +18,7 @@ of the PWA hardening spec.
 
 ## 0. Implementation status
 
-Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
+Approved 22 July 2026. **Stages 0 to 5 built and deployed over 22–23 July.**
 
 | Stage | | Feature | Status |
 |---|---|---|---|
@@ -29,11 +30,11 @@ Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
 | 4 | P0 | **P1-F5** Cost ceiling | ✅ Done |
 | 4 | P1 | **P1-F6** The daily brief | ✅ Done |
 | 5 | P0 | **P1-F7** Change requests | ✅ Done — schema is migration `0012` |
-| 5 | P0 | **P1-F8** The drafting agent | 🔶 On-demand path done; scheduled clustering is single-cluster only (see below) |
+| 5 | P0 | **P1-F8** The drafting agent | ✅ Done — on-demand + client trigger; scheduled clustering is single-cluster (see below) |
 | 5 | P0 | **P1-F9** Filing, and the handoff | ✅ Done |
-| 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started — unblocked |
-| 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started — filing has no in-app trigger yet |
-| 5 | P0 | **P1-F12** Guardrails | 🔶 F12.2, F12.4, F12.5, F12.6 hold; F12.1 (no auto-merge) and F12.3 (flag sensitive paths) not built |
+| 5 | P1 | **P1-F10** Closing the loop | ✅ Done — verified live; real merge→push is the manual gate |
+| 5 | P1 | **P1-F11** Where this lives in the UI | ✅ Done |
+| 5 | P0 | **P1-F12** Guardrails | ✅ Done — F12.1 auto-merge off, F12.3 CODEOWNERS, the rest already held |
 | 0 | P0 | **P1-F13** Test isolation | ✅ Done |
 | 6 | — | Approval ledger | 🚫 Not approved. Described only |
 
@@ -91,6 +92,49 @@ Against the live project, not a fixture:
   hardening spec records applies here unchanged.
 - 63 unit tests and 7 end-to-end tests pass. Typecheck, lint and the secret
   scan are clean.
+
+### Stage 5 (F10, F11, F12), added 23 July — the loop closes
+
+The return half: approve from the app, and hear when a change ships. With
+this, **Phase 1 is complete** — every stage 0 to 5 is built, and Stage 6
+remains described but not approved.
+
+- **The webhook is the one public endpoint the project exposes, and it is
+  HMAC-verified before anything is read.** Verified live against the deployed
+  function: a wrongly-signed request is rejected with 401; a `pull_request`
+  opened event moves a filed change request to `in_progress`; a merged event
+  moves it to `shipped`, stamps `shipped_at`, and fires the push; a replay of
+  the merge changes nothing and sends no second push; an unrelated PR with no
+  issue reference is ignored. The real GitHub→webhook→push delivery is the one
+  manual gate, like WP-F6.3 — the function handles the exact signed payloads
+  GitHub sends, and the `pull_request` hook is registered and active.
+- **A PR maps to its change request through the issue it closes.** The webhook
+  reads GitHub's closing keywords (`Closes #N`) from the PR title and body and
+  matches on `issue_number`. Convention-dependent — a PR that links its issue
+  only through GitHub's UI would not match — but the handoff writes the keyword,
+  so it resolves. The `pull_request` events require no PR-read scope, which the
+  `issues:write` token does not have; that constraint shaped the design.
+- **The Supabase gateway verifies a JWT by default**, which a public webhook
+  cannot present, so `github-webhook` is deployed with `--no-verify-jwt` and
+  does its own signature check. This is the one Edge Function without platform
+  JWT verification, precisely because it is the one that must be public.
+- **F11 is the review UI, and it is not a nav item** (F11.4). It lives behind
+  the existing `reeve` filter chip in the Inbox: a "Draft a change" action when
+  unpromoted notes exist, and a review sheet — the drafted body, the captures
+  quoted, the questions, then Approve / Edit / Reject — in the pattern of
+  CaptureDetail. Approval is one deliberate tap (F11.3), with the coding-agent
+  handoff an inline toggle (F9.5), and it syncs through the outbox (F7.5) so a
+  decision made offline is durable and the filing happens when it reaches the
+  server. The browser flow is not covered by an automated test — like the rest
+  of the UI, it is verified by use — but the function, outbox and RLS paths
+  under it are each verified.
+- **The drafting agent now accepts a user JWT** so the browser can trigger it,
+  scoped to the caller's own captures; the scheduled pass stays service-only.
+- **F12 completed cheaply.** GitHub auto-merge was already off (F12.1); a
+  CODEOWNERS file flags the diffs that can disable the gates, touch migrations
+  or reach credentials for heightened review (F12.3). The credential split
+  (F12.5), no-deploy-capability (F12.4) and captures-only reads (F12.6) already
+  held from Stage 5's first half.
 
 ### Stage 5 (F7–F9), added 23 July
 

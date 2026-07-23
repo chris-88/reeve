@@ -57,6 +57,38 @@ export const COMMITMENT_ORIGINS = ["model", "user"] as const;
 export const CommitmentOrigin = z.enum(COMMITMENT_ORIGINS);
 export type CommitmentOrigin = z.infer<typeof CommitmentOrigin>;
 
+export const CHANGE_REQUEST_STATUSES = [
+  "draft",
+  "proposed",
+  "rejected",
+  "filed",
+  "in_progress",
+  "shipped",
+  "abandoned",
+] as const;
+export const ChangeRequestStatus = z.enum(CHANGE_REQUEST_STATUSES);
+export type ChangeRequestStatus = z.infer<typeof ChangeRequestStatus>;
+
+export const ChangeRequest = z.object({
+  id: z.uuid(),
+  user_id: z.uuid(),
+  title: z.string(),
+  body: z.string().nullable(),
+  questions: z.array(z.string()),
+  status: ChangeRequestStatus,
+  auto_handoff: z.boolean(),
+  issue_number: z.number().int().nullable(),
+  issue_url: z.string().nullable(),
+  pr_number: z.number().int().nullable(),
+  pr_url: z.string().nullable(),
+  decided_at: z.string().nullable(),
+  filed_at: z.string().nullable(),
+  shipped_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type ChangeRequest = z.infer<typeof ChangeRequest>;
+
 export const Commitment = z.object({
   id: z.uuid(),
   user_id: z.uuid(),

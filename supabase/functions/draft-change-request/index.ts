@@ -41,10 +41,31 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
  */
 const MAX_SCHEDULED_PILE = 8;
 
-Deno.serve(async (req) => {
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// The browser invokes this on demand (F11.1's "Draft a change"), so the same
+// CORS discipline as triage applies: the preflight must allow exactly the
+// headers supabase-js sends, or the request is blocked before it arrives.
+const ALLOWED_ORIGINS = new Set(["https://app.chrisquinn.ie", "http://localhost:5173"]);
 
+function cors(origin: string | null): Record<string, string> {
+  return {
+    "Access-Control-Allow-Origin":
+      origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://app.chrisquinn.ie",
+    "Access-Control-Allow-Headers":
+      "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    Vary: "Origin",
+  };
+}
+
+Deno.serve(async (req) => {
+  const CORS = cors(req.headers.get("Origin"));
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...CORS, "content-type": "application/json" },
+    });
+
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -57,8 +78,18 @@ Deno.serve(async (req) => {
     return json({ error: "function is not configured" }, 500);
   }
 
+  const db = createClient(supabaseUrl, secretKey);
+
+  // Two callers: the cron pass presents the service key; the browser presents
+  // a user's own JWT. The scheduled pass is service-only, and an on-demand
+  // request is scoped to whoever the JWT resolves to — a user cannot draft
+  // from another account's captures.
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (token !== secretKey) return json({ error: "unauthorised" }, 401);
+  const isService = token === secretKey;
+  const {
+    data: { user },
+  } = isService ? { data: { user: null } } : await db.auth.getUser(token);
+  if (!isService && !user) return json({ error: "unauthorised" }, 401);
 
   let payload: { capture_ids?: unknown; mode?: unknown; user_id?: unknown };
   try {
@@ -67,8 +98,9 @@ Deno.serve(async (req) => {
     return json({ error: "invalid body" }, 400);
   }
 
-  const db = createClient(supabaseUrl, secretKey);
-  const scheduled = payload.mode === "scheduled";
+  // Only the cron may run the scheduled pass; the browser only ever drafts
+  // from an explicit set of captures.
+  const scheduled = payload.mode === "scheduled" && isService;
 
   // Resolve the captures to draft from, and whose account they belong to.
   let userId: string;
@@ -97,6 +129,10 @@ Deno.serve(async (req) => {
     const resolved = await resolveCaptures(db, ids as string[]);
     if (!resolved) return json({ error: "captures not found or span more than one account" }, 400);
     ({ userId, captures } = resolved);
+
+    // A browser caller may only draft from its own captures. The service key
+    // is trusted; a user JWT is scoped to itself.
+    if (user && userId !== user.id) return json({ error: "unauthorised" }, 403);
   }
 
   // P1-F5.2: before the model call, not after. The ceiling is shared across

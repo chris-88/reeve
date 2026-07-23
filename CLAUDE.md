@@ -44,7 +44,7 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 | Document | Status |
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
-| `docs/arc-spec-phase-1.md` | **Stages 0–4 done. Stage 5 approved, unbuilt.** Stage 6 described but not approved |
+| `docs/arc-spec-phase-1.md` | **Complete — Stages 0–5 done and deployed.** Stage 6 described but not approved |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding** |
 | `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
@@ -55,17 +55,20 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 defects the spec did not predict, and where the document was wrong or silent.
 Read it before starting anything below.
 
-- **Stage 5 is filing-and-in, F7–F9 done.** A dictated thought about the app
-  can now be drafted into a GitHub issue and filed on the repo, verified end to
-  end. **What remains of Phase 1: F10** (a GitHub webhook that marks a change
-  request shipped on merge, and pushes), **F11** (the review UI — until it
-  exists, approval is a database write, so filing has no in-app trigger), and
-  **the rest of F12** (F12.1 no-auto-merge, F12.3 flag sensitive-path PRs via
-  CODEOWNERS). None are blocked.
+- **Phase 1 is complete.** The full loop works: a thought about the app is
+  drafted into a GitHub issue (behind the `reeve` Inbox chip), reviewed and
+  approved from the app, filed, and — when its PR merges — marked shipped with
+  a push back. Stages 0–5 are all built and deployed; only Stage 6 (the general
+  approval ledger, §8) remains, and it is described, not approved.
+- **Two things in Phase 1 are proven only by hand, not by CI**, both by
+  design: WP-F6.3 (a push landing on the iPhone) and the real
+  GitHub→webhook→shipped→push delivery. Every function, signature, transition
+  and RLS path under them is verified; only the last physical hop is manual.
 - **The scheduled clustering pass is a first version** — it drafts the
   unpromoted `reeve` pile as one cluster and skips a pile over eight, recording
   the miss. Real clustering wants P1-F4 retrieval; §7 sanctions earning it
-  later. The on-demand drafting path is complete.
+  later. The on-demand drafting path (the `reeve` chip's "Draft a change") is
+  complete.
 - **P1-F5 and P1-F6 are done and running.** A brief is dispatched by `pg_cron`
   at 05:10 UTC to every account with a capture in the last 30 days; the ceiling
   is checked before the model call and refuses by writing an `agent_runs` row
@@ -90,6 +93,15 @@ Web Push is built and deployed — `docs/arc-spec-web-push.md` §0 records what
 was verified and what was not. **Delivery has never been proven**: everything
 up to the push service accepting the request is exercised, but a notification
 has not arrived on a device. That is WP-F6.3 and it needs the iPhone.
+
+A spec review on 23 July confirmed Stages 0–4 and Web Push are on the correct
+path. It changed one thing: **WP-F3.4 was amended** — a brief headline may name
+the single most pressing item (one sentence, a commitment's action included) on
+the lock screen, chosen for utility on a single-user phone. One code follow-up
+falls out of it, small and behaviour-neutral: the brief function's inline
+comment claiming the headline is "about counts, not a capture's text" is wrong
+and should be corrected to cite WP-F3.4 as amended. See `arc-spec-web-push.md`
+§0 "Amended after review".
 
 The inline permission ask (WP-F4.3) has no home yet either. Its moment is a
 change request being filed, which is P1-F9 — build it there rather than
@@ -148,10 +160,9 @@ Supabase CLI as below.
 
 Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
 `reeve-file-sweep` every minute, `reeve-stuck-alert` every five,
-`reeve-daily-brief` at 05:10 UTC (and `run_daily_brief` dispatches per active
-user). They read their configuration from Vault (`service_role_key`,
-`triage_function_url`, `brief_function_url`, `file_change_request_url`,
-`sentry_dsn`) because the migrations are public.
+`reeve-daily-brief` at 05:10 UTC. They read their configuration from Vault
+(`service_role_key`, `triage_function_url`, `brief_function_url`,
+`file_change_request_url`, `sentry_dsn`) because the migrations are public.
 
 `db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
 seeded without one is readable by nobody — a silent failure that looks like a
@@ -167,7 +178,14 @@ supabase functions deploy send-push --project-ref <ref>
 supabase functions deploy brief --project-ref <ref>
 supabase functions deploy draft-change-request --project-ref <ref>
 supabase functions deploy file-change-request --project-ref <ref>
+supabase functions deploy github-webhook --no-verify-jwt --project-ref <ref>
 ```
+
+`github-webhook` is the one function deployed **`--no-verify-jwt`**: the
+Supabase gateway verifies a Supabase JWT by default, which GitHub cannot
+present, so the function does its own HMAC signature check instead. Every other
+function keeps the default JWT gate. The `pull_request` webhook is registered
+on the repo and active; its secret is `GITHUB_WEBHOOK_SECRET`.
 
 `file-change-request` is the only place `GITHUB_ISSUES_TOKEN` exists — a
 fine-grained PAT scoped to `issues: write` on this one repo. It cannot push
@@ -189,6 +207,15 @@ supabase secrets set --project-ref <ref> \
 ## Things that cost hours
 
 Each of these was learned the expensive way. They are not visible in the code.
+
+**A public Edge Function must be deployed `--no-verify-jwt`.** Supabase's
+gateway verifies a Supabase JWT on every function call by default, and returns
+`401 UNAUTHORIZED_NO_AUTH_HEADER` *before the function runs*. A webhook caller
+like GitHub cannot present that JWT — it sends its own HMAC signature instead —
+so `github-webhook` is deployed with `--no-verify-jwt` and verifies the
+signature itself. The failure looks like the function rejecting the request,
+but the function never executed; check the deploy flag before debugging the
+handler.
 
 **The two CI jobs share one free-tier Supabase project, so they must not
 run at once.** `check` and `e2e` both hit the live project — auth, PostgREST,

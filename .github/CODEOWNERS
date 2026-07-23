@@ -1,0 +1,16 @@
+# P1-F12.3: the diffs that must never be skimmed.
+#
+# A change request Reeve files may be built by a coding agent, and most of what
+# it touches is ordinary application code. These paths are not: they can disable
+# the CI gates, alter data irreversibly, or reach credentials. Requiring the
+# repository owner's review on them means an agent-authored diff here is looked
+# at, not waved through.
+#
+# This only bites once branch protection requires review from code owners on
+# these paths. Everything else stays as-is.
+
+/.github/workflows/          @chris-88
+/supabase/migrations/        @chris-88
+/supabase/functions/         @chris-88
+/scripts/check-bundle.mjs    @chris-88
+/scripts/check-test-accounts.mjs @chris-88

@@ -52,7 +52,10 @@ export const cacheBuster = __BUILD_ID__;
  * anything".
  */
 export const shouldPersistQuery = (key: readonly unknown[]): boolean =>
-  key[0] === "captures" || key[0] === "areas" || key[0] === "commitments";
+  key[0] === "captures" ||
+  key[0] === "areas" ||
+  key[0] === "commitments" ||
+  key[0] === "change_requests";
 
 /** Called on sign-out: cached rows must not survive into another session. */
 export async function purgeQueryCache(): Promise<void> {

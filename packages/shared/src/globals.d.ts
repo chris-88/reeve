@@ -36,7 +36,17 @@ declare const console: {
 
 declare const crypto: {
   randomUUID(): string;
-  subtle: { digest(algorithm: string, data: ArrayBufferView): Promise<ArrayBuffer> };
+  subtle: {
+    digest(algorithm: string, data: ArrayBufferView): Promise<ArrayBuffer>;
+    importKey(
+      format: string,
+      keyData: ArrayBufferView,
+      algorithm: { name: string; hash: string },
+      extractable: boolean,
+      usages: string[],
+    ): Promise<unknown>;
+    sign(algorithm: string, key: unknown, data: ArrayBufferView): Promise<ArrayBuffer>;
+  };
 };
 
 declare const TextEncoder: { new (): { encode(input: string): Uint8Array } };

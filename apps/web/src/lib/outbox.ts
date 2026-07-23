@@ -75,6 +75,29 @@ export type CommitmentOp = {
   patch: CommitmentPatch;
 };
 
+/**
+ * A change request's reviewable state, the parts F11 lets the user set.
+ *
+ * Approval is `decided_at` set while status stays 'proposed' — the filing
+ * sweeper reads exactly that. Rejection moves to 'rejected'. Both go through
+ * the outbox (F7.5) so a decision made with no signal is durable; only the
+ * filing that follows needs the network, and it happens server-side when the
+ * decision syncs.
+ */
+export type ChangeRequestPatch = {
+  status?: "rejected";
+  decided_at?: string | null;
+  auto_handoff?: boolean;
+  title?: string;
+  body?: string;
+};
+
+export type ChangeRequestOp = {
+  kind: "change_request";
+  changeRequestId: string;
+  patch: ChangeRequestPatch;
+};
+
 export type PendingOp = {
   id: string;
   /**
@@ -90,7 +113,7 @@ export type PendingOp = {
   lastError?: string;
   /** Retries exhausted. Kept forever; only an explicit user retry revives it. */
   deadLettered: boolean;
-  op: CaptureOp | CommitmentOp;
+  op: CaptureOp | CommitmentOp | ChangeRequestOp;
 };
 
 type Listener = (items: PendingOp[]) => void;
@@ -208,6 +231,19 @@ export function pendingPatch(
   return merged;
 }
 
+/** The same optimistic overlay, for a change request under review. */
+export function pendingChangeRequestPatch(
+  items: readonly PendingOp[],
+  changeRequestId: string,
+): ChangeRequestPatch | undefined {
+  let merged: ChangeRequestPatch | undefined;
+  for (const item of items) {
+    if (item.op.kind !== "change_request" || item.op.changeRequestId !== changeRequestId) continue;
+    merged = { ...merged, ...item.op.patch };
+  }
+  return merged;
+}
+
 export function backoffFor(attempts: number): number {
   const base = BACKOFF_MS[attempts] ?? MAX_BACKOFF_MS;
   // Jitter stops a batch of failures from retrying in lockstep.
@@ -257,6 +293,42 @@ export async function enqueueCommitmentPatch(
         commitmentId,
         patch: {
           ...(existing?.op.kind === "commitment" ? existing.op.patch : {}),
+          ...patch,
+        },
+      },
+    };
+    return existing ? items.map((i) => (i.id === id ? merged : i)) : [...items, merged];
+  });
+  void flush();
+}
+
+/**
+ * Queue a decision on a change request — approve, reject, or an edit.
+ *
+ * Same keyed-merge as commitments: reviewing then editing then approving is one
+ * write, not three that race. Approval sets `decided_at`; the filing sweeper
+ * picks it up server-side once it syncs, which is why reviewing works offline
+ * and only the filing needs the network.
+ */
+export async function enqueueChangeRequestPatch(
+  changeRequestId: string,
+  userId: string,
+  patch: ChangeRequestPatch,
+): Promise<void> {
+  const id = `change_request:${changeRequestId}`;
+  await mutate((items) => {
+    const existing = items.find((i) => i.id === id);
+    const merged: PendingOp = {
+      id,
+      userId,
+      attempts: 0,
+      nextAttemptAt: 0,
+      deadLettered: false,
+      op: {
+        kind: "change_request",
+        changeRequestId,
+        patch: {
+          ...(existing?.op.kind === "change_request" ? existing.op.patch : {}),
           ...patch,
         },
       },
@@ -349,6 +421,16 @@ async function send(item: PendingOp): Promise<string | null> {
     // attempt whose response we never saw. That is success, not failure.
     if (!error || error.code === "23505") return null;
     return error.message;
+  }
+
+  if (item.op.kind === "change_request") {
+    const { error } = await supabase
+      .from("change_requests")
+      .update(item.op.patch)
+      .eq("id", item.op.changeRequestId)
+      .eq("user_id", item.userId)
+      .abortSignal(timeout());
+    return error ? error.message : null;
   }
 
   // An update is idempotent by construction — replaying "status = done" is a

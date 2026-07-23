@@ -97,7 +97,7 @@ export default function App() {
       <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" && <Capture userId={session.user.id} />}
         {screen === "due" && <Due userId={session.user.id} />}
-        {screen === "inbox" && <Inbox />}
+        {screen === "inbox" && <Inbox userId={session.user.id} />}
       </main>
 
       <nav

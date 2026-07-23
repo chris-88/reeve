@@ -124,6 +124,55 @@ try {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // P1-F10.5: the reeve share, alongside the taxonomy report as the spec asks.
+  // A rising share is a warning — the tool eating its own purpose — not a
+  // number to admire.
+  // ---------------------------------------------------------------------------
+  const { rows: share } = await client.query(
+    "select * from reeve_capture_share where user_id = $1 order by week desc limit 6",
+    [owner.id],
+  );
+
+  console.log(`\n\nReeve's share of captures, by week\n`);
+  if (share.length === 0) {
+    console.log("  Nothing filed yet.");
+  } else {
+    console.log("  week          captures   reeve");
+    for (const r of share) {
+      const week = new Date(r.week).toISOString().slice(0, 10);
+      console.log(
+        `  ${week}   ${String(r.captures).padStart(8)}   ${`${r.reeve} (${r.reeve_pct ?? 0}%)`.padStart(9)}`,
+      );
+    }
+    console.log(
+      "\n  A rising share means Reeve is being used mostly to build Reeve.\n" +
+        "  Treat it as a warning to point the tool back at the work it serves.",
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // P1-F10.4: capture-to-shipped lead time — the one honest measure of whether
+  // the self-change loop actually works.
+  // ---------------------------------------------------------------------------
+  const { rows: shipped } = await client.query(
+    "select * from change_request_leadtime where user_id = $1 order by shipped_at desc limit 10",
+    [owner.id],
+  );
+
+  console.log(`\n\nThought to shipped\n`);
+  if (shipped.length === 0) {
+    console.log("  Nothing has shipped through the loop yet.");
+  } else {
+    const avg = shipped.reduce((s, r) => s + Number(r.lead_days), 0) / shipped.length;
+    for (const r of shipped) {
+      console.log(
+        `  ${Number(r.lead_days).toFixed(1).padStart(5)}d   ${r.title.slice(0, 60)}`,
+      );
+    }
+    console.log(`\n  Average ${avg.toFixed(1)} days from first capture to merged.`);
+  }
+
   console.log("");
 } finally {
   await client.end().catch(() => {});
