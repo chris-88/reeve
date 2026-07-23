@@ -63,8 +63,33 @@ export async function purgeTestData(admin: SupabaseClient, userId: string): Prom
  *
  * Three attempts, short backoff. A genuine credential problem still fails.
  */
+type AuthResult<T> = { data: T; error: { message: string } | null };
+
+/**
+ * Per-attempt timeout, in ms.
+ *
+ * The Supabase client has no request timeout, so a transient API latency spike
+ * — which is what took a CI hook past even a two-minute budget — hangs the
+ * call indefinitely rather than failing it. Racing each attempt against a
+ * timeout turns a hang into a retryable error, so three attempts finish in
+ * bounded time instead of consuming the whole hook.
+ */
+const PER_ATTEMPT_MS = 20_000;
+
+function withTimeout<T>(p: PromiseLike<AuthResult<T>>, ms: number): Promise<AuthResult<T>> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<AuthResult<T>>((resolve) =>
+      setTimeout(
+        () => resolve({ data: null as T, error: { message: `auth call timed out after ${ms}ms` } }),
+        ms,
+      ),
+    ),
+  ]);
+}
+
 export async function retryAuth<T>(
-  call: () => PromiseLike<{ data: T; error: { message: string } | null }>,
+  call: () => PromiseLike<AuthResult<T>>,
   options: {
     attempts?: number;
     /**
@@ -79,7 +104,7 @@ export async function retryAuth<T>(
   let lastError: { message: string } | null = null;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 500 * attempt));
-    const { data, error } = await call();
+    const { data, error } = await withTimeout(call(), PER_ATTEMPT_MS);
     if (!error || accept?.(error)) return data;
     lastError = error;
   }

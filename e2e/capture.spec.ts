@@ -127,7 +127,7 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
           .maybeSingle();
         return data?.status ?? "absent";
       },
-      { timeout: 45_000, intervals: [1000] },
+      { timeout: 90_000, intervals: [1000] },
     )
     .toBe("done");
 

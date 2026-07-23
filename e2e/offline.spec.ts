@@ -119,7 +119,7 @@ test("captures survive going offline and sync on reconnect", async ({
           .maybeSingle();
         return data?.status ?? "absent";
       },
-      { timeout: 60_000, intervals: [1500] },
+      { timeout: 90_000, intervals: [1500] },
     )
     .toBe("done");
 });
@@ -206,7 +206,7 @@ test("a commitment completed offline survives a cold reload and syncs", async ({
           .maybeSingle();
         return data?.status ?? "absent";
       },
-      { timeout: 60_000, intervals: [1500] },
+      { timeout: 90_000, intervals: [1500] },
     )
     .toBe("done");
 });
