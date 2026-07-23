@@ -1,12 +1,76 @@
 # Reeve: The attention queue
 
-Status: Proposed
+Status: **Built — AQ-1…AQ-6 on branch `attention-queue`.** Manual dispatch/
+return only (automation is `spec.md` §9); two follow-ups flagged in §0.
 Owner: Chris
 Audience: implementing session picking this up cold
 Supersedes: the "Inbox → Board" draft (kanban middle layer), replaced after the
 design review in §1.
 Companion to: `docs/spec.md` (§9 end-state), `docs/arc-spec-phase-1.md`
 (commitments, Due, change requests, briefs).
+
+---
+
+## 0. Implementation status
+
+Built in an isolated worktree on branch `attention-queue`, from `main` at
+`a3848b9`. Every factual claim in this document was checked against the code
+before it was implemented; the two corrections that needed making are below.
+
+| | Feature | Status |
+|---|---|---|
+| P0 | **B-1** PWA nav gap (dvh) | ✅ Done — device check outstanding |
+| P0 | **B-2** Mobile type scale | ✅ Done |
+| P1 | **AQ-1** `actions` schema + soft-delete | ✅ Done (migration `0014`) |
+| P1 | **AQ-2** The "Needs you" stream | ✅ Done — replaces the Inbox tab |
+| P1 | **AQ-3** AI-proposed order + producer | ✅ Done — triage deployed |
+| P1 | **AQ-4** The "Go" handoff | ✅ Done — reeve-routing flagged below |
+| P1 | **AQ-5** The result loop | ✅ Scaffold — manual; §9 automates |
+| P1 | **AQ-6** Search + archive | ✅ Done |
+
+### Verified
+- 102 unit tests (incl. `actions` RLS, `orderActions`, `assembleBrief`) and 7
+  end-to-end tests pass on Chromium. The e2e capture test confirms the producer
+  end to end: a dictated thought with a commitment becomes a proposed action
+  visible in "Needs you".
+- `pnpm build` passes the secret scan; the bundle is smaller than the board
+  draft's (no drag library).
+- The migration is applied and the triage function is deployed to the shared
+  project (see the handoff caveats).
+
+### Three defects this spec did not predict
+1. **The producer would have blocked a filed capture.** Placed before `done`
+   and throwing — the pattern `writeCommitments` uses — a producer error would
+   have put a durable, filed thought back in the retry queue, the exact failure
+   the whole system exists to avoid. It is now *after* `done` and non-fatal: a
+   missing action is recoverable, a lost capture is not.
+2. **The area foreign key.** The spec's SQL wrote `area_id text references
+   areas(id)`; that predates areas-ownership (0003). `actions` uses the
+   composite `(user_id, area_id) references areas(owner_id, id)`, like captures
+   and commitments, so an action cannot carry someone else's area.
+3. **The test runner could not import an app module.** The app uses the `@/`
+   alias everywhere; the vitest config did not define it, so `orderActions`
+   (whose module pulls in the supabase client) was untestable until the alias
+   was added.
+
+### Gaps left open — earn or build these next
+- **Reeve-area actions use the generic brief, not the change-request pipeline.**
+  AQ-4 asks a `reeve` action to route through the existing change-request
+  handoff. The generic brief works for every area today; the reeve
+  specialisation is wired but deferred.
+- **Dispatch and return are manual.** The loop is complete but hand-driven —
+  Go copies a brief to the clipboard; a result is pasted back by hand. The
+  automation is `spec.md` §9.
+- **The Inbox tab's F11 review UI lost its home.** Retiring the Inbox took
+  Developer 2's `ReeveChangeRequests` (the Phase-1 F11 change-request review UI)
+  off the nav. `Inbox.tsx` and `ReeveChangeRequests.tsx` are kept in the tree,
+  not deleted — re-homing reeve change-request review into the "Needs you"
+  stream is the natural continuation of the AQ-4 reeve-routing above.
+- **Action decisions are online-first, not offline-durable.** Unlike a capture
+  or a commitment edit, a Go/decline/approve is not queued through the outbox.
+  A follow-up if deciding with no signal turns out to matter.
+- **B-1 needs a device.** The nav-gap fix cannot be reproduced in the harness;
+  it needs the installed iPhone PWA.
 
 ---
 
