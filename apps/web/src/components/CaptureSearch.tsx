@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Archive, ArchiveRestore, Search, X } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import CaptureDetail from "@/components/CaptureDetail";
 
 /**
- * RB-5: where the old log went.
+ * AQ-6: where the old log lives.
  *
- * Once the Inbox empties, "everything I ever captured" needs a home or
- * archiving reads as deletion. This is that home — deliberately minimal: a
- * search over title and raw text, reverse-chronological, and crucially it
- * includes archived captures (no `archived_at` filter), which is the whole
- * point. It sits off the primary nav, reached from the Inbox header.
+ * Once the chronological Inbox is retired, "everything I ever captured" needs a
+ * home or archiving reads as deletion. This is that home — a search over title
+ * and raw text, reverse-chronological — and it is where a note is **archived**.
+ *
+ * Archived captures are hidden from the default list (browsing) but included
+ * the moment you search a term (finding), so archiving hides without losing.
+ * Off the primary nav, reached from the Needs-you header.
  */
 export default function CaptureSearch({
   areas,
@@ -21,6 +24,7 @@ export default function CaptureSearch({
   areas: Area[];
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<Capture | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,13 +43,30 @@ export default function CaptureSearch({
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
-      // No archived_at filter: the archive is exactly what this view is for.
+      // Browsing hides archived; searching a term includes it, so an archived
+      // capture is hidden but still findable.
       if (term) query = query.or(`title.ilike.%${term}%,raw_text.ilike.%${term}%`);
+      else query = query.is("archived_at", null);
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
   });
+
+  async function setArchived(c: Capture, archived: boolean) {
+    const archived_at = archived ? new Date().toISOString() : null;
+    const { error } = await supabase.from("captures").update({ archived_at }).eq("id", c.id);
+    if (error) {
+      toast.error(archived ? "Couldn't archive that" : "Couldn't restore that");
+      return;
+    }
+    void qc.invalidateQueries({ queryKey: ["capture-search"] });
+    if (archived) {
+      toast("Archived", {
+        action: { label: "Undo", onClick: () => void setArchived(c, false) },
+      });
+    }
+  }
 
   return (
     <div className="bg-bg pt-safe fixed inset-0 z-50 flex flex-col">
@@ -81,12 +102,13 @@ export default function CaptureSearch({
         <ul>
           {results.map((c) => {
             const area = areaById.get(c.corrected_area_id ?? c.area_id ?? "");
+            const archived = c.archived_at != null;
             return (
-              <li key={c.id}>
+              <li key={c.id} className="flex items-center">
                 <button
                   type="button"
                   onClick={() => setOpen(c)}
-                  className="hover:bg-card/60 -mx-2 flex w-[calc(100%+1rem)] gap-3.5 rounded-xl px-2 py-3.5 text-left transition-colors"
+                  className="hover:bg-card/60 -ml-2 flex min-w-0 flex-1 gap-3.5 rounded-xl px-2 py-3.5 text-left transition-colors"
                 >
                   <span
                     aria-hidden
@@ -98,7 +120,7 @@ export default function CaptureSearch({
                       <span className="line-clamp-2 min-w-0 flex-1 font-serif text-[1.05rem]">
                         {c.title ?? c.raw_text}
                       </span>
-                      {c.archived_at && (
+                      {archived && (
                         <span className="text-muted-dim shrink-0 text-[0.7rem] tracking-wide uppercase">
                           Archived
                         </span>
@@ -110,6 +132,19 @@ export default function CaptureSearch({
                       </span>
                     )}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={archived ? `Restore "${c.title ?? c.raw_text}"` : `Archive "${c.title ?? c.raw_text}"`}
+                  title={archived ? "Restore" : "Archive"}
+                  onClick={() => void setArchived(c, !archived)}
+                  className="text-muted-dim hover:text-foreground hover:bg-card/60 ml-1 shrink-0 rounded-lg p-2 transition-colors"
+                >
+                  {archived ? (
+                    <ArchiveRestore className="size-4" aria-hidden />
+                  ) : (
+                    <Archive className="size-4" aria-hidden />
+                  )}
                 </button>
               </li>
             );
