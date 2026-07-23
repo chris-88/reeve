@@ -28,12 +28,12 @@ Approved 22 July 2026. **Stages 0 to 3 built and deployed the same day.**
 | 3 | P1 | **P1-F4** Cross-capture retrieval | ✅ Done |
 | 4 | P0 | **P1-F5** Cost ceiling | ✅ Done |
 | 4 | P1 | **P1-F6** The daily brief | ✅ Done |
-| 5 | P0 | **P1-F7** Change requests | ⬜ Not started — its schema is now migration `0012` |
-| 5 | P0 | **P1-F8** The drafting agent | ⬜ Not started |
-| 5 | P0 | **P1-F9** Filing, and the handoff | ⬜ Not started — unblocked |
+| 5 | P0 | **P1-F7** Change requests | ✅ Done — schema is migration `0012` |
+| 5 | P0 | **P1-F8** The drafting agent | 🔶 On-demand path done; scheduled clustering is single-cluster only (see below) |
+| 5 | P0 | **P1-F9** Filing, and the handoff | ✅ Done |
 | 5 | P1 | **P1-F10** Closing the loop | ⬜ Not started — unblocked |
-| 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started |
-| 5 | P0 | **P1-F12** Guardrails | 🔶 F12.2 done (branch protection); rest not started |
+| 5 | P1 | **P1-F11** Where this lives in the UI | ⬜ Not started — filing has no in-app trigger yet |
+| 5 | P0 | **P1-F12** Guardrails | 🔶 F12.2, F12.4, F12.5, F12.6 hold; F12.1 (no auto-merge) and F12.3 (flag sensitive paths) not built |
 | 0 | P0 | **P1-F13** Test isolation | ✅ Done |
 | 6 | — | Approval ledger | 🚫 Not approved. Described only |
 
@@ -91,6 +91,52 @@ Against the live project, not a fixture:
   hardening spec records applies here unchanged.
 - 63 unit tests and 7 end-to-end tests pass. Typecheck, lint and the secret
   scan are clean.
+
+### Stage 5 (F7–F9), added 23 July
+
+Built through filing — the first outbound write. F10 (the webhook loop-close),
+F11 (the review UI) and the rest of F12 are not built.
+
+- **The whole path is verified against the live repository.** Three dictated
+  fragments — "the inbox feels cramped", "the date is tiny", "why is the word
+  count still there" — drafted into one coherent issue in the house style,
+  quoting each capture verbatim, with four questions rather than invented
+  answers. Approving it filed exactly one real issue, linked both ways;
+  replaying the approval filed none; the token got 403 attempting to push
+  code. The issue was then closed and the fixtures removed.
+- **Filing is claimed by compare-and-swap before the GitHub call**, the same
+  pattern triage uses. `filed_at` is set while null to elect one writer; a
+  second sweeper tick finds zero rows and backs off. The GitHub-side search on
+  the `filing_key` marker (F9.3) is the belt to that braces — it recovers only
+  the case where a claim was set, the issue created, and the process died
+  before recording it.
+- **A capture belongs to at most one non-rejected change request (F7.4),
+  enforced by a trigger** rather than an index, because "non-rejected" is a
+  property of the parent row. Re-drafting an already-promoted capture fails the
+  link insert and rolls back the orphan draft.
+- **F9.5's opt-in handoff needed a column the spec's schema did not list.**
+  `auto_handoff boolean` records the choice made at approval time; the filed
+  issue carries the `@claude` mention only when it is set.
+
+### Where F7–F9 fell short of the spec, deliberately
+
+- **The scheduled clustering pass (F8.1) treats the unpromoted pile as one
+  cluster.** §7 says clustering "wants P1-F4's retrieval" and that "a first
+  version needs neither", so the first version drafts the pile as a single
+  `draft` change request and, above eight captures, skips and records the miss
+  to Sentry rather than drafting one incoherent monster. Splitting a pile into
+  several coherent change requests is the retrieval-backed version §7 sanctions
+  earning later. The on-demand path — explicit captures in, one `proposed`
+  change request out — is complete, and it is the path that leads to filing.
+- **Filing has no in-app trigger yet.** F7.5 routes approval through the
+  outbox; without F11's review screen there is no button to set `decided_at`,
+  so approval is currently a database write (as the verification did). F11 adds
+  the screen; the filing machinery behind it is done and proven.
+- **F12 is partial.** The credential is split and scoped (F12.5, verified),
+  Reeve has no deploy capability (F12.4), and the drafting agent reads only
+  captures (F12.6). Not built: F12.1 (no auto-merge — needs the merge path,
+  which is F10) and F12.3 (flag PRs touching workflows/migrations/functions for
+  heightened review — a CODEOWNERS file, cheap, belongs with F10/F11).
 
 ### Stage 4, added 22 July
 

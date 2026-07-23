@@ -55,11 +55,17 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 defects the spec did not predict, and where the document was wrong or silent.
 Read it before starting anything below.
 
-- **Stage 5 is all that is left**: P1-F7 through P1-F12, the loop from a
-  dictated thought to a merged pull request. Nothing blocks it. It is also the
-  only part of Phase 1 that writes outside the system, so P1-F7.2 and the §7
-  guardrails are not negotiable — a capture landing in the `reeve` area makes
-  it *eligible*, never filed.
+- **Stage 5 is filing-and-in, F7–F9 done.** A dictated thought about the app
+  can now be drafted into a GitHub issue and filed on the repo, verified end to
+  end. **What remains of Phase 1: F10** (a GitHub webhook that marks a change
+  request shipped on merge, and pushes), **F11** (the review UI — until it
+  exists, approval is a database write, so filing has no in-app trigger), and
+  **the rest of F12** (F12.1 no-auto-merge, F12.3 flag sensitive-path PRs via
+  CODEOWNERS). None are blocked.
+- **The scheduled clustering pass is a first version** — it drafts the
+  unpromoted `reeve` pile as one cluster and skips a pile over eight, recording
+  the miss. Real clustering wants P1-F4 retrieval; §7 sanctions earning it
+  later. The on-demand drafting path is complete.
 - **P1-F5 and P1-F6 are done and running.** A brief is dispatched by `pg_cron`
   at 05:10 UTC to every account with a capture in the last 30 days; the ceiling
   is checked before the model call and refuses by writing an `agent_runs` row
@@ -136,10 +142,16 @@ pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
 pnpm triage:report                     # which classifier_hint to edit first
 ```
 
-Four cron jobs run in Postgres: `reeve-reap` and `reeve-sweep` every minute,
-`reeve-stuck-alert` every five, `reeve-daily-brief` at 05:10 UTC. Three read
-their configuration from Vault (`service_role_key`, `triage_function_url`,
-`brief_function_url`, `sentry_dsn`) because the migrations are public.
+Six Edge Functions now: `triage`, `send-push`, `brief`, `draft-change-request`,
+`file-change-request` (plus the shared code they import). Deploy each with the
+Supabase CLI as below.
+
+Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
+`reeve-file-sweep` every minute, `reeve-stuck-alert` every five,
+`reeve-daily-brief` at 05:10 UTC (and `run_daily_brief` dispatches per active
+user). They read their configuration from Vault (`service_role_key`,
+`triage_function_url`, `brief_function_url`, `file_change_request_url`,
+`sentry_dsn`) because the migrations are public.
 
 `db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
 seeded without one is readable by nobody — a silent failure that looks like a
@@ -153,7 +165,14 @@ export SUPABASE_ACCESS_TOKEN=...        # from .env.local
 supabase functions deploy triage --project-ref <ref>
 supabase functions deploy send-push --project-ref <ref>
 supabase functions deploy brief --project-ref <ref>
+supabase functions deploy draft-change-request --project-ref <ref>
+supabase functions deploy file-change-request --project-ref <ref>
 ```
+
+`file-change-request` is the only place `GITHUB_ISSUES_TOKEN` exists — a
+fine-grained PAT scoped to `issues: write` on this one repo. It cannot push
+code, verified (a `PUT` to contents 403s). `GITHUB_REPO` is a function secret
+too, defaulting to `chris-88/reeve`.
 
 Function secrets are set the same way. Web Push needs three, not two — signing
 takes the whole keypair, so the *public* key is a function secret as well:

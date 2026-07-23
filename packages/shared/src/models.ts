@@ -18,6 +18,9 @@ export const MODELS = {
   // person will act on. Named here rather than hardcoded at the call site so
   // that moving it a tier is one line.
   brief: "claude-sonnet-5",
+  // P1-F8.2. Turning dictated fragments into an issue a developer can act on
+  // is drafting too, and the harder end of it.
+  change_request: "claude-sonnet-5",
 } as const satisfies Record<string, string>;
 
 export type Step = keyof typeof MODELS;

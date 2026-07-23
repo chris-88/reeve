@@ -41,6 +41,13 @@ export const ACCUMULATION_LIMIT = 10;
  * exactly why teardown cannot be a client concern.
  */
 export async function purgeTestData(admin: SupabaseClient, userId: string): Promise<void> {
+  // captures cascade to commitments and change_request_captures, but not to
+  // change_requests, briefs or push_subscriptions — nothing deletes a capture
+  // in production, so those tables have no cascade from it. A test account has
+  // to clear them itself.
+  await admin.from("change_requests").delete().eq("user_id", userId);
+  await admin.from("briefs").delete().eq("user_id", userId);
+  await admin.from("push_subscriptions").delete().eq("user_id", userId);
   await admin.from("agent_runs").delete().eq("user_id", userId);
   await admin.from("captures").delete().eq("user_id", userId);
 }
