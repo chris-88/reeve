@@ -136,8 +136,10 @@ Deno.serve(async (req) => {
      * P1-F6.7 delivery, and WP-F5.4: best effort, never blocking.
      *
      * A brief that generated but failed to notify is still a brief. The
-     * notification is not the transaction — and the headline is the model's
-     * own words about counts, not a capture's text (WP-F3.4).
+     * notification is not the transaction. Per WP-F3.4 as amended (23 July),
+     * the headline may name the single most pressing item — one sentence,
+     * including a commitment's action — chosen for utility on a single-user
+     * lock screen. It is the model's own summarising line, not raw capture text.
      */
     await notify(supabaseUrl, secretKey, userId, result.headline);
 
