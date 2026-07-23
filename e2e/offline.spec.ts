@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { assertNoAccumulation, purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
+import { purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -11,18 +11,32 @@ const PASSWORD = "e2e-" + "x".repeat(20);
 
 const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
 
+/** Resolved once, so no test or hook pays a second listUsers against the
+ * intermittently-slow auth admin API. */
+let userId: string;
+
+test.beforeAll(async () => {
+  // The hooks do network cleanup against an API that occasionally 403s and is
+  // retried; 60s is not always enough on a loaded CI runner. Give them room.
+  test.setTimeout(120_000);
+  await retryAuth(
+    () => admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true }),
+    { accept: (e) => /already|registered/i.test(e.message) },
+  );
+  const users = await retryAuth(() => admin.auth.admin.listUsers());
+  userId = users.users.find((u) => u.email === EMAIL)!.id;
+});
+
 /**
- * P1-F13.3. This suite writes captures through the UI, so a failed run leaves
- * them behind unless teardown is unconditional and scoped by account rather
- * than by the ids a passing run happened to collect.
+ * P1-F13.3. This suite writes captures through the UI, so teardown is
+ * unconditional and scoped by account. The accumulation *assertion* lives in
+ * CI's `check-test-accounts.mjs` step (both jobs, `if: always()`) rather than
+ * here — running it in every hook meant a second flaky listUsers per teardown,
+ * which is what timed the hooks out.
  */
 test.afterAll(async () => {
-  const users = await retryAuth(() => admin.auth.admin.listUsers());
-  const testUser = users.users.find((u) => u.email === EMAIL);
-  if (testUser) await purgeTestData(admin, testUser.id);
-
-  const offenders = await assertNoAccumulation(admin);
-  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
+  test.setTimeout(120_000);
+  if (userId) await purgeTestData(admin, userId);
 });
 
 /**
@@ -126,8 +140,6 @@ test("a commitment completed offline survives a cold reload and syncs", async ({
   test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
 
   const marker = randomUUID().slice(0, 8);
-  const users = await retryAuth(() => admin.auth.admin.listUsers());
-  const userId = users.users.find((u) => u.email === EMAIL)!.id;
 
   const { data: capture } = await admin
     .from("captures")

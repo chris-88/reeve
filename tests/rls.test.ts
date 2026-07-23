@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
-import { assertNoAccumulation, purgeTestData, retryAuth } from "./support/test-accounts.ts";
+import { purgeTestData, retryAuth } from "./support/test-accounts.ts";
 
 dotenv.config({ path: ".env.local", quiet: true });
 
@@ -116,14 +116,15 @@ beforeAll(async () => {
  * migration into destroying real data. Scoped by user rather than by the ids
  * this file happens to remember, so a run that fails half way still cleans up
  * what it managed to create.
+ *
+ * The accumulation *assertion* is CI's `check-test-accounts.mjs` step, which
+ * runs after this and covers every test account at once. The generous timeout
+ * is for the flaky, retried auth admin API these deletes go through.
  */
 afterAll(async () => {
   await purgeTestData(admin, aliceId);
   await purgeTestData(admin, bobId);
-
-  const offenders = await assertNoAccumulation(admin);
-  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
-});
+}, 60_000);
 
 describe("anonymous access", () => {
   it("cannot read captures", async () => {

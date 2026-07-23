@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { assertNoAccumulation, purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
+import { purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -21,14 +21,18 @@ let testUserId: string | undefined;
  * live project until the next one — which is how a test account came to hold
  * more captures than the owner, and how a migration came to believe it was the
  * owner. Runs whether the suite passed or failed.
+ *
+ * The accumulation *assertion* lives in CI's `check-test-accounts.mjs` step,
+ * not here — an extra listUsers per hook against the flaky auth admin API is
+ * what timed these hooks out.
  */
 test.afterAll(async () => {
+  test.setTimeout(120_000);
   if (testUserId) await purgeTestData(admin, testUserId);
-  const offenders = await assertNoAccumulation(admin);
-  expect(offenders, "test fixtures are accumulating in the live project").toEqual([]);
 });
 
 test.beforeAll(async () => {
+  test.setTimeout(120_000);
   await retryAuth(
     () => admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true }),
     { accept: (e) => /already|registered/i.test(e.message) },
