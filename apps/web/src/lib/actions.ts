@@ -161,3 +161,44 @@ export async function redoAction(qc: QueryClient, action: Action): Promise<void>
     toast("Sent back for another pass");
   }
 }
+
+// --- dispatched → … (the manual result loop; AQ-5) -----------------------
+//
+// Until real agents return work automatically (spec.md §9), Chris drives the
+// return by hand: a dispatched action either comes back for approval or is
+// simply marked done.
+
+export const DISPATCHED_QK = ["dispatched-actions"] as const;
+
+/** An agent handed something back: enter the stream as an Approve/Redo decision. */
+export async function markResultReady(
+  qc: QueryClient,
+  action: Action,
+  result: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("actions")
+    .update({ status: "review", result: result.trim() || null })
+    .eq("id", action.id);
+  if (error) {
+    toast.error("Couldn't save that");
+    return;
+  }
+  void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+  void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+  toast("Saved for review");
+}
+
+/** Done without a review step. */
+export async function markDone(qc: QueryClient, action: Action): Promise<void> {
+  const { error } = await supabase
+    .from("actions")
+    .update({ status: "done", decided_at: now() })
+    .eq("id", action.id);
+  if (error) {
+    toast.error("Couldn't do that");
+    return;
+  }
+  void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+  toast("Marked done");
+}
