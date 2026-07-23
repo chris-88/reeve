@@ -49,6 +49,8 @@ export async function purgeTestData(admin: SupabaseClient, userId: string): Prom
   await admin.from("briefs").delete().eq("user_id", userId);
   await admin.from("push_subscriptions").delete().eq("user_id", userId);
   await admin.from("agent_runs").delete().eq("user_id", userId);
+  // actions cascade from captures (0014), deleted first anyway like agent_runs.
+  await admin.from("actions").delete().eq("user_id", userId);
   await admin.from("captures").delete().eq("user_id", userId);
 }
 
