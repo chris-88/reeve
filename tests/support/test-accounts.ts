@@ -128,16 +128,24 @@ export async function testAccountIds(admin: SupabaseClient): Promise<string[]> {
  * to create the account on a first-ever run, which in practice never happens
  * because the account persists between runs.
  */
-export async function resolveTestUserId(
+export type TestUserConfig = { url: string; anonKey: string; email: string; password: string };
+
+/**
+ * A signed-in client for a test account, and its id — without the auth admin
+ * API on the normal path. See the note above `resolveTestUserId`'s callers:
+ * `createUser` and `listUsers` are the endpoints that stalled CI, and this
+ * touches `createUser` only on a first-ever run because the account persists.
+ */
+export async function signInTestUser(
   admin: SupabaseClient,
-  config: { url: string; anonKey: string; email: string; password: string },
-): Promise<string> {
+  config: TestUserConfig,
+): Promise<{ client: SupabaseClient; id: string }> {
   const { createClient } = await import("@supabase/supabase-js");
-  const anon = createClient(config.url, config.anonKey, { auth: { persistSession: false } });
-  const signIn = () => anon.auth.signInWithPassword({ email: config.email, password: config.password });
+  const client = createClient(config.url, config.anonKey, { auth: { persistSession: false } });
+  const signIn = () => client.auth.signInWithPassword({ email: config.email, password: config.password });
 
   const first = await withTimeout(signIn(), PER_ATTEMPT_MS);
-  if (!first.error && first.data?.user) return first.data.user.id;
+  if (!first.error && first.data?.user) return { client, id: first.data.user.id };
 
   // First-ever run, or the account was removed: create it, then sign in.
   await retryAuth(
@@ -150,7 +158,15 @@ export async function resolveTestUserId(
     { accept: (e) => /already|registered/i.test(e.message) },
   );
   const created = await retryAuth(signIn);
-  return created.user!.id;
+  return { client, id: created.user!.id };
+}
+
+/** Just the id — the e2e specs sign in through the UI, so they do not need the client. */
+export async function resolveTestUserId(
+  admin: SupabaseClient,
+  config: TestUserConfig,
+): Promise<string> {
+  return (await signInTestUser(admin, config)).id;
 }
 
 /**

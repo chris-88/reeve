@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
-import { purgeTestData, retryAuth } from "./support/test-accounts.ts";
+import { purgeTestData, signInTestUser } from "./support/test-accounts.ts";
 
 dotenv.config({ path: ".env.local", quiet: true });
 
@@ -50,17 +50,14 @@ async function seedAreas(ownerId: string, ids: readonly string[]): Promise<void>
   if (error) throw error;
 }
 
-async function signIn(email: string): Promise<{ client: SupabaseClient; id: string }> {
-  await retryAuth(
-    () => admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true }),
-    { accept: (e) => /already|registered/i.test(e.message) },
-  );
-
-  const client = createClient(URL, ANON, { auth: { persistSession: false } });
-  // Retried: the auth API's transient 403 lands here as readily as anywhere,
-  // and a suite that cannot sign in fails all 22 of its tests at once.
-  const data = await retryAuth(() => client.auth.signInWithPassword({ email, password: PASSWORD }));
-  return { client, id: data.user.id };
+/**
+ * Sign-in first, create only if that fails — the same discipline the e2e specs
+ * use. `admin.createUser` is one of the two GoTrue admin endpoints that stalled
+ * CI; the accounts persist between runs, so it is reached only on a first-ever
+ * run. Signing in the normal way is far more reliable and returns the id.
+ */
+function signIn(email: string): Promise<{ client: SupabaseClient; id: string }> {
+  return signInTestUser(admin, { url: URL, anonKey: ANON, email, password: PASSWORD });
 }
 
 beforeAll(async () => {
@@ -105,7 +102,9 @@ beforeAll(async () => {
     .single();
   if (commitmentError) throw commitmentError;
   aliceCommitmentId = commitment.id;
-});
+  // Two sign-ins, area seeding and fixture inserts against the live project.
+  // The default 10s hook budget is not enough when the auth API is slow.
+}, 60_000);
 
 /**
  * P1-F13.3: everything this suite created, removed.
