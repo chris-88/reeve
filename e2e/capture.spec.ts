@@ -109,7 +109,7 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   // success toast: the departure animation is the acknowledgement (UI-6/UI-11).
   await expect(page.getByLabel("Capture a thought")).toHaveValue("");
 
-  await page.getByRole("navigation").getByRole("button", { name: "Inbox" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
 
   // Triage involves a real model call, so allow generous time.
   const user = createClient(URL, ANON, { auth: { persistSession: false } });
@@ -140,8 +140,8 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   expect(row.summary).toBeTruthy();
   expect(row.entities, "empty arrays are valid, missing keys are not").toHaveProperty("people");
 
-  // Realtime should have moved the row from "Filing…" to its summary in place,
-  // without a reload.
+  // Once triaged, the capture's commitment makes it a proposed action, which
+  // surfaces in "Needs you" carrying the capture's title — realtime, no reload.
   await expect(page.getByText(row.title as string)).toBeVisible();
 
   // The run is logged and costed.
@@ -197,11 +197,11 @@ test("the capture button is inert with no text", async ({ page }) => {
 });
 
 /** UI-12: the dot must not change the nav button's accessible name. */
-test("the inbox tab keeps its accessible name while showing the dot", async ({ page }) => {
+test("the needs-you tab keeps its accessible name while showing the dot", async ({ page }) => {
   await signIn(page);
   await page.getByLabel("Capture a thought").fill(`dot check ${randomUUID().slice(0, 6)}`);
   await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
   await expect(
-    page.getByRole("navigation").getByRole("button", { name: "Inbox", exact: true }),
+    page.getByRole("navigation").getByRole("button", { name: "Needs you", exact: true }),
   ).toBeVisible();
 });
