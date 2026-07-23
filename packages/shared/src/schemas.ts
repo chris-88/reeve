@@ -123,8 +123,47 @@ export const Capture = z.object({
   attempts: z.number().int(),
   corrected_area_id: z.string().nullable(),
   corrected_at: z.string().nullable(),
+  /** Soft-delete (AQ-1). Set when archived from Search; never hard-deleted. */
+  archived_at: z.string().nullable(),
 });
 export type Capture = z.infer<typeof Capture>;
+
+export const ACTION_STATUSES = [
+  "proposed",
+  "dispatched",
+  "review",
+  "done",
+  "declined",
+] as const;
+export const ActionStatus = z.enum(ACTION_STATUSES);
+export type ActionStatus = z.infer<typeof ActionStatus>;
+
+/** The two states that need a human — the "Needs you" stream (AQ-2). */
+export const NEEDS_YOU_STATUSES: readonly ActionStatus[] = ["proposed", "review"];
+
+/**
+ * An action Reeve proposes to take on a capture's behalf (AQ-1), carried
+ * through a decision lifecycle. Promoted from a capture like a commitment; the
+ * capture stays the immutable record. No `position` — priority is proposed
+ * (AQ-3), never hand-ordered.
+ */
+export const Action = z.object({
+  id: z.uuid(),
+  user_id: z.uuid(),
+  capture_id: z.uuid(),
+  title: z.string(),
+  brief: z.string().nullable(),
+  status: ActionStatus,
+  area_id: z.string().nullable(),
+  pinned_at: z.string().nullable(),
+  result: z.string().nullable(),
+  dispatched_at: z.string().nullable(),
+  decided_at: z.string().nullable(),
+  archived_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type Action = z.infer<typeof Action>;
 
 /**
  * What the triage model must return.

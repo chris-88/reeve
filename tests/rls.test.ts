@@ -28,6 +28,7 @@ let bobId: string;
 let aliceCaptureId: string;
 let aliceNameCaptureId: string;
 let aliceCommitmentId: string;
+let aliceActionId: string;
 
 /**
  * Areas are owner-scoped since 0003, so each account needs its own — including
@@ -102,6 +103,15 @@ beforeAll(async () => {
     .single();
   if (commitmentError) throw commitmentError;
   aliceCommitmentId = commitment.id;
+
+  // AQ-1: a proposed action promoted from the fixture capture.
+  const { data: action, error: actionError } = await alice
+    .from("actions")
+    .insert({ user_id: aliceId, capture_id: aliceCaptureId, title: "rls fixture action" })
+    .select()
+    .single();
+  if (actionError) throw actionError;
+  aliceActionId = action.id;
   // Two sign-ins, area seeding and fixture inserts against the live project.
   // The default 10s hook budget is not enough when the auth API is slow.
 }, 60_000);
@@ -155,6 +165,11 @@ describe("anonymous access", () => {
     const { data } = await anon.from("commitments").select("*");
     expect(data).toEqual([]);
   });
+
+  it("cannot read actions", async () => {
+    const { data } = await anon.from("actions").select("*");
+    expect(data).toEqual([]);
+  });
 });
 
 describe("signed-in access", () => {
@@ -185,6 +200,12 @@ describe("signed-in access", () => {
       .from("commitments")
       .select("*")
       .eq("id", aliceCommitmentId);
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+  });
+
+  it("reads its own actions", async () => {
+    const { data, error } = await alice.from("actions").select("*").eq("id", aliceActionId);
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
   });
@@ -272,6 +293,47 @@ describe("cross-user isolation", () => {
     const { error } = await bob
       .from("captures")
       .insert({ user_id: bobId, raw_text: "wrong area", area_id: "alice-only" });
+    expect(error).not.toBeNull();
+  });
+
+  it("does not leak another user's actions", async () => {
+    const { data } = await bob.from("actions").select("*").eq("id", aliceActionId);
+    expect(data).toEqual([]);
+  });
+
+  it("cannot decide another user's action", async () => {
+    const { data } = await bob
+      .from("actions")
+      .update({ status: "declined" })
+      .eq("id", aliceActionId)
+      .select();
+    expect(data).toEqual([]);
+
+    const { data: intact } = await alice
+      .from("actions")
+      .select("status")
+      .eq("id", aliceActionId)
+      .single();
+    expect(intact!.status).toBe("proposed");
+  });
+
+  it("cannot insert an action owned by someone else", async () => {
+    const { error } = await bob
+      .from("actions")
+      .insert({ user_id: aliceId, capture_id: aliceCaptureId, title: "forged" });
+    expect(error?.code).toBe("42501");
+  });
+
+  it("cannot promote an action into another user's area", async () => {
+    // The same composite foreign key that guards captures and commitments.
+    const { error } = await bob
+      .from("actions")
+      .insert({
+        user_id: bobId,
+        capture_id: aliceCaptureId,
+        title: "wrong area",
+        area_id: "alice-only",
+      });
     expect(error).not.toBeNull();
   });
 
