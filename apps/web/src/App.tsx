@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Inbox as InboxIcon, ListChecks, PenLine } from "lucide-react";
+import { Bell, ListChecks, PenLine } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
@@ -12,19 +12,19 @@ import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
 import Due from "@/screens/Due";
-import Inbox from "@/screens/Inbox";
+import NeedsYou from "@/screens/NeedsYou";
 
-type Screen = "capture" | "due" | "inbox";
+type Screen = "capture" | "needs-you" | "due";
 
 /**
- * Write, then owe, then log. Due sits in the middle because that is the order
- * a thought moves through the system, and because it is the screen that turns
- * Reeve from something written into to something looked at.
+ * Write, then decide, then owe. The middle is "Needs you" — the attention queue
+ * where Reeve surfaces what wants a judgment. Due is the time lens beside it.
+ * The old chronological Inbox is retired; its history moved to Search.
  */
 const NAV = [
   { id: "capture", label: "Write", Icon: PenLine },
+  { id: "needs-you", label: "Needs you", Icon: Bell },
   { id: "due", label: "Due", Icon: ListChecks },
-  { id: "inbox", label: "Inbox", Icon: InboxIcon },
 ] as const;
 
 export default function App() {
@@ -96,8 +96,8 @@ export default function App() {
     <div className="flex h-full flex-col">
       <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" && <Capture userId={session.user.id} />}
+        {screen === "needs-you" && <NeedsYou />}
         {screen === "due" && <Due userId={session.user.id} />}
-        {screen === "inbox" && <Inbox userId={session.user.id} />}
       </main>
 
       <nav
@@ -119,8 +119,9 @@ export default function App() {
             >
               <span className="relative">
                 <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
-                {id === "inbox" && inFlight && (
-                  // Decorative: the accessible name must stay "Inbox".
+                {id === "needs-you" && inFlight && (
+                  // "Something is waiting on you." Decorative — the accessible
+                  // name must stay "Needs you".
                   <span
                     aria-hidden
                     className="bg-foreground absolute -top-0.5 -right-1 size-1.5 rounded-full"

@@ -77,7 +77,7 @@ test("captures survive going offline and sync on reconnect", async ({
   await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
     timeout: 30_000,
   });
-  await page.getByRole("navigation").getByRole("button", { name: "Inbox" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
   await page.waitForTimeout(2500);
 
   await context.setOffline(true);
@@ -86,9 +86,9 @@ test("captures survive going offline and sync on reconnect", async ({
   await page.reload();
   await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
 
-  // F2: the inbox must never claim emptiness when it has cached rows.
-  await page.getByRole("navigation").getByRole("button", { name: "Inbox" }).click();
-  await expect(page.getByText("Nothing captured yet.")).toBeHidden();
+  // F2: the offline read path renders the middle screen, not an error.
+  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
+  await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
 
   // F3/F4: a capture taken offline is durable and visible as pending.
   const marker = randomUUID().slice(0, 8);
@@ -96,6 +96,10 @@ test("captures survive going offline and sync on reconnect", async ({
   await page.getByLabel("Capture a thought").fill(`offline ${marker} drop the trailer back`);
   await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
   await expect(page.getByLabel("Capture a thought")).toHaveValue("");
+
+  // The offline capture is visible as pending in "Needs you" before it syncs.
+  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
+  await expect(page.getByText(new RegExp(marker))).toBeVisible();
 
   await context.setOffline(false);
   await page.reload();
