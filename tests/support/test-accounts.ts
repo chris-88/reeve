@@ -118,6 +118,42 @@ export async function testAccountIds(admin: SupabaseClient): Promise<string[]> {
 }
 
 /**
+ * A test account's id, without the auth **admin** API.
+ *
+ * Three consecutive CI failures traced to GoTrue's admin endpoints
+ * (`createUser`, `listUsers`) stalling under load — and a `beforeAll` that made
+ * two retried admin calls could reach the hook budget even with per-attempt
+ * timeouts. A normal password sign-in is a different, far more reliable
+ * endpoint, and it returns the user id directly. The admin API is touched only
+ * to create the account on a first-ever run, which in practice never happens
+ * because the account persists between runs.
+ */
+export async function resolveTestUserId(
+  admin: SupabaseClient,
+  config: { url: string; anonKey: string; email: string; password: string },
+): Promise<string> {
+  const { createClient } = await import("@supabase/supabase-js");
+  const anon = createClient(config.url, config.anonKey, { auth: { persistSession: false } });
+  const signIn = () => anon.auth.signInWithPassword({ email: config.email, password: config.password });
+
+  const first = await withTimeout(signIn(), PER_ATTEMPT_MS);
+  if (!first.error && first.data?.user) return first.data.user.id;
+
+  // First-ever run, or the account was removed: create it, then sign in.
+  await retryAuth(
+    () =>
+      admin.auth.admin.createUser({
+        email: config.email,
+        password: config.password,
+        email_confirm: true,
+      }),
+    { accept: (e) => /already|registered/i.test(e.message) },
+  );
+  const created = await retryAuth(signIn);
+  return created.user!.id;
+}
+
+/**
  * P1-F13.5: fail when fixtures are piling up.
  *
  * Accumulation is the early, silent symptom of every failure in this class. It

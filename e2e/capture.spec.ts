@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
+import { purgeTestData, resolveTestUserId } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -33,56 +33,54 @@ test.afterAll(async () => {
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  await retryAuth(
-    () => admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true }),
-    { accept: (e) => /already|registered/i.test(e.message) },
-  );
+  // Identity via sign-in, not the auth admin API — see resolveTestUserId.
+  testUserId = await resolveTestUserId(admin, {
+    url: URL,
+    anonKey: ANON,
+    email: EMAIL,
+    password: PASSWORD,
+  });
 
   // Clear this user's captures between runs. Without it, rows accumulate in the
   // real project and repeated runs produce duplicate titles, which turn strict
   // locators into false failures. Scoped to the test account only.
   // Commitments go with the captures by cascade.
-  const users = await retryAuth(() => admin.auth.admin.listUsers());
-  const testUser = users.users.find((u) => u.email === EMAIL);
-  if (testUser) {
-    testUserId = testUser.id;
-    await purgeTestData(admin, testUser.id);
+  await purgeTestData(admin, testUserId);
 
-    /**
-     * The test account needs its own taxonomy.
-     *
-     * Before areas were owner-scoped this suite read the owner's real one —
-     * every classifier_hint describing a real part of his life — which is the
-     * exposure P1-F0 closed. These hints are invented, and `unsorted` has to
-     * exist or triage has nowhere to put a capture it cannot place.
-     */
-    await admin.from("areas").upsert(
-      [
-        {
-          id: "site",
-          label: "Site",
-          classifier_hint: "Building work: materials, subcontractors, pours, deliveries.",
-          colour: "#b45309",
-          sort_order: 0,
-        },
-        {
-          id: "admin",
-          label: "Admin",
-          classifier_hint: "Invoices, insurance, tax, paperwork of any kind.",
-          colour: "#0369a1",
-          sort_order: 1,
-        },
-        {
-          id: "unsorted",
-          label: "Unsorted",
-          classifier_hint: "Anything that cannot be placed confidently.",
-          colour: "#71717a",
-          sort_order: 99,
-        },
-      ].map((a) => ({ ...a, owner_id: testUser.id })),
-      { onConflict: "owner_id,id" },
-    );
-  }
+  /**
+   * The test account needs its own taxonomy.
+   *
+   * Before areas were owner-scoped this suite read the owner's real one —
+   * every classifier_hint describing a real part of his life — which is the
+   * exposure P1-F0 closed. These hints are invented, and `unsorted` has to
+   * exist or triage has nowhere to put a capture it cannot place.
+   */
+  await admin.from("areas").upsert(
+    [
+      {
+        id: "site",
+        label: "Site",
+        classifier_hint: "Building work: materials, subcontractors, pours, deliveries.",
+        colour: "#b45309",
+        sort_order: 0,
+      },
+      {
+        id: "admin",
+        label: "Admin",
+        classifier_hint: "Invoices, insurance, tax, paperwork of any kind.",
+        colour: "#0369a1",
+        sort_order: 1,
+      },
+      {
+        id: "unsorted",
+        label: "Unsorted",
+        classifier_hint: "Anything that cannot be placed confidently.",
+        colour: "#71717a",
+        sort_order: 99,
+      },
+    ].map((a) => ({ ...a, owner_id: testUserId })),
+    { onConflict: "owner_id,id" },
+  );
 });
 
 /**

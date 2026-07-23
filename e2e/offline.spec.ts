@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { purgeTestData, retryAuth } from "../tests/support/test-accounts.ts";
+import { purgeTestData, resolveTestUserId } from "../tests/support/test-accounts.ts";
 
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -16,15 +16,9 @@ const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
 let userId: string;
 
 test.beforeAll(async () => {
-  // The hooks do network cleanup against an API that occasionally 403s and is
-  // retried; 60s is not always enough on a loaded CI runner. Give them room.
   test.setTimeout(120_000);
-  await retryAuth(
-    () => admin.auth.admin.createUser({ email: EMAIL, password: PASSWORD, email_confirm: true }),
-    { accept: (e) => /already|registered/i.test(e.message) },
-  );
-  const users = await retryAuth(() => admin.auth.admin.listUsers());
-  userId = users.users.find((u) => u.email === EMAIL)!.id;
+  // Identity via sign-in, not the auth admin API — see resolveTestUserId.
+  userId = await resolveTestUserId(admin, { url: URL, anonKey: ANON, email: EMAIL, password: PASSWORD });
 });
 
 /**
