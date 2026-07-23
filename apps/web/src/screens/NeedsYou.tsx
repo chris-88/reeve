@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { captureOps, subscribe, type CaptureOp, type PendingOp } from "@/lib/outbox";
 import {
   ACTIONS_QK,
+  DISPATCHED_QK,
   approveAction,
   declineAction,
   goAction,
@@ -67,6 +68,22 @@ export default function NeedsYou() {
     },
   });
 
+  // In flight: actions handed to an agent, waiting on the work — not on you.
+  // A quiet status list, not a decision (§3).
+  const { data: dispatched = [] } = useQuery({
+    queryKey: DISPATCHED_QK,
+    queryFn: async (): Promise<Action[]> => {
+      const { data, error } = await supabase
+        .from("actions")
+        .select("*")
+        .is("archived_at", null)
+        .eq("status", "dispatched")
+        .order("dispatched_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Captures still triaging or failed — they surface at the top until they
   // become actions (or fail), the way the old Inbox showed them.
   const { data: inflight = [] } = useQuery({
@@ -106,9 +123,10 @@ export default function NeedsYou() {
   useEffect(() => {
     const channel = supabase
       .channel("needs-you-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "actions" }, () =>
-        qc.invalidateQueries({ queryKey: ACTIONS_QK }),
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "actions" }, () => {
+        void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+        void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "captures" }, () => {
         void qc.invalidateQueries({ queryKey: ["inflight-captures"] });
       })
@@ -194,11 +212,36 @@ export default function NeedsYou() {
           ))}
         </ul>
 
-        {caughtUp && (
+        {caughtUp && dispatched.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-8 py-24 text-center">
             <CheckCheck className="text-muted-foreground/40 size-8" strokeWidth={1.5} aria-hidden />
             <p className="text-muted-foreground text-sm">You&rsquo;re all caught up.</p>
           </div>
+        )}
+
+        {dispatched.length > 0 && (
+          <section className="mt-8">
+            <h2 className="text-muted-dim py-2 text-xs font-semibold tracking-widest uppercase">
+              In flight
+            </h2>
+            <ul>
+              {dispatched.map((a) => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenAction(a)}
+                    className="hover:bg-card/60 -mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-xl px-3.5 py-3 text-left transition-colors"
+                  >
+                    <Loader2 className="text-muted-dim size-4 shrink-0" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-1 text-sm">{a.title}</span>
+                      <span className="text-muted-dim text-xs">With an agent</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </div>
 

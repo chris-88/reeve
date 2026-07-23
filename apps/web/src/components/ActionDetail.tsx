@@ -13,6 +13,8 @@ import {
   approveAction,
   declineAction,
   goAction,
+  markDone,
+  markResultReady,
   redoAction,
   togglePin,
 } from "@/lib/actions";
@@ -54,6 +56,9 @@ export default function ActionDetail({
   const [capTitle, setCapTitle] = useState("");
   const [capSummary, setCapSummary] = useState("");
   const [saving, setSaving] = useState(false);
+  // AQ-5 (manual scaffold): the result an agent handed back, pasted by hand
+  // until dispatch and return are automated (spec.md §9).
+  const [result, setResult] = useState("");
 
   function startTweak() {
     setTitle(action.title);
@@ -89,6 +94,7 @@ export default function ActionDetail({
 
   const proposed = action.status === "proposed";
   const review = action.status === "review";
+  const dispatched = action.status === "dispatched";
 
   return (
     <ResponsiveSheet title={editing ? "Tweak" : action.title} onClose={onClose}>
@@ -197,17 +203,69 @@ export default function ActionDetail({
                   </Button>
                 </>
               )}
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-pressed={action.pinned_at != null}
-                onClick={() => void togglePin(qc, action)}
-              >
-                <Pin className="size-4" aria-hidden />
-                {action.pinned_at ? "Unpin" : "Do next"}
-              </Button>
+              {(proposed || review) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-pressed={action.pinned_at != null}
+                  onClick={() => void togglePin(qc, action)}
+                >
+                  <Pin className="size-4" aria-hidden />
+                  {action.pinned_at ? "Unpin" : "Do next"}
+                </Button>
+              )}
             </div>
+
+            {dispatched && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground text-sm">
+                  With an agent. When it comes back, paste the result to review it — or just mark
+                  it done. (Agents return work automatically once real dispatch ships; until then
+                  this is by hand.)
+                </p>
+                <Textarea
+                  value={result}
+                  onChange={(e) => setResult(e.target.value)}
+                  placeholder="Paste what the agent produced…"
+                  className="min-h-24"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!result.trim()}
+                    onClick={() => {
+                      onClose();
+                      void markResultReady(qc, action, result);
+                    }}
+                  >
+                    Save for review
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      onClose();
+                      void markDone(qc, action);
+                    }}
+                  >
+                    <Check className="size-4" aria-hidden /> Mark done
+                  </Button>
+                </div>
+                {action.brief && (
+                  <details>
+                    <summary className="text-muted-dim cursor-pointer text-sm">
+                      The brief you sent
+                    </summary>
+                    <p className="text-muted-foreground mt-2 font-serif text-sm leading-relaxed whitespace-pre-wrap">
+                      {action.brief}
+                    </p>
+                  </details>
+                )}
+              </div>
+            )}
 
             {area && (
               <div>
