@@ -99,7 +99,9 @@ export default function Capture({ userId }: { userId: string }) {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-baseline justify-between px-6 pt-8 pb-2">
-        <h1 className="font-serif text-[1.75rem] leading-none font-normal">{header.greeting}</h1>
+        <h1 className="font-serif text-[1.45rem] leading-none font-normal sm:text-[1.75rem]">
+          {header.greeting}
+        </h1>
         <span className="text-muted-dim text-sm tabular-nums">{header.date}</span>
       </header>
 
@@ -113,7 +115,9 @@ export default function Capture({ userId }: { userId: string }) {
           <span
             aria-hidden
             onAnimationEnd={() => setDeparting(null)}
-            className="animate-depart pointer-events-none absolute inset-x-6 top-2 font-serif text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em] whitespace-pre-wrap"
+            // Must match the textarea size at every breakpoint, or the save
+            // animation jumps size mid-flight.
+            className="animate-depart pointer-events-none absolute inset-x-6 top-2 font-serif text-[1.35rem] leading-[1.5] font-light tracking-[-0.01em] whitespace-pre-wrap sm:text-[1.7rem]"
           >
             {departing}
           </span>
@@ -136,7 +140,7 @@ export default function Capture({ userId }: { userId: string }) {
           enterKeyHint="enter"
           className={cn(
             "h-full max-h-none min-h-0 resize-none border-0 bg-transparent p-0 shadow-none",
-            "font-serif !text-[1.7rem] leading-[1.5] font-light tracking-[-0.01em]",
+            "font-serif !text-[1.35rem] leading-[1.5] font-light tracking-[-0.01em] sm:!text-[1.7rem]",
             "placeholder:text-muted-dim placeholder:font-light placeholder:italic",
             "focus-visible:ring-0 dark:bg-transparent",
           )}
