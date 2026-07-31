@@ -129,9 +129,11 @@ Lower priority than Phase 1, but F10 is the one with a cost today.
 
 **Two things belong to Chris and should not be decided for him:**
 
-1. The three open questions in `docs/archive/ui-spec.md` §9 — particularly *is the
-   Inbox a log or a queue*, which the spec itself notes resolves UI-8, UI-12
-   and the archive question differently depending on the answer.
+1. The open questions in `docs/archive/ui-spec.md` §9. The central one — *is the
+   Inbox a log or a queue* — is now **decided: a queue**
+   (`docs/arc-spec-reeve-vision.md` §6.4, implemented by
+   `docs/arc-spec-attention-queue.md`). UI-8, UI-12 and the archive question now
+   resolve the queue way; acting on them is still Chris's.
 2. The real-device check: aeroplane mode, cold launch from the home screen on
    the iPhone. Point 1 of the hardening spec's §5, and the one criterion no
    automated test can stand in for — see the WebKit gap below.
