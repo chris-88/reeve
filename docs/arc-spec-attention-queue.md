@@ -1,8 +1,8 @@
 # Reeve: The attention queue
 
-Status: **AQ-1…AQ-6 built, merged and deployed** to `app.chrisquinn.ie`.
-**AQ-7 (Work board) + AQ-8 (Library) specced in §10, not yet built** (branch
-`work-board`). Manual dispatch/return only (automation is `spec.md` §9).
+Status: **AQ-1…AQ-8 built.** AQ-1…AQ-6 deployed to `app.chrisquinn.ie`; AQ-7
+(Work board) + AQ-8 (Library) built on branch `work-board`, awaiting merge.
+Manual dispatch/return only (automation is `spec.md` §9).
 Owner: Chris
 Audience: implementing session picking this up cold
 Supersedes: the "Inbox → Board" draft (kanban middle layer), replaced after the
@@ -28,8 +28,8 @@ before it was implemented; the two corrections that needed making are below.
 | P1 | **AQ-4** The "Go" handoff | ✅ Done — reeve-routing flagged below |
 | P1 | **AQ-5** The result loop | ✅ Scaffold — manual; §9 automates |
 | P1 | **AQ-6** Search + archive | ✅ Done — becomes AQ-8 |
-| P1 | **AQ-7** The Work board (§10) | ⬜ Specced, not built |
-| P1 | **AQ-8** The Library (§10) | ⬜ Specced, not built |
+| P1 | **AQ-7** The Work board (§10) | ✅ Built — assistants manual until §9 |
+| P1 | **AQ-8** The Library (§10) | ✅ Built |
 
 ### Verified
 - 102 unit tests (incl. `actions` RLS, `orderActions`, `assembleBrief`) and 7
@@ -69,9 +69,14 @@ before it was implemented; the two corrections that needed making are below.
   off the nav. `Inbox.tsx` and `ReeveChangeRequests.tsx` are kept in the tree,
   not deleted — re-homing reeve change-request review into the "Needs you"
   stream is the natural continuation of the AQ-4 reeve-routing above.
-- **Action decisions are online-first, not offline-durable.** Unlike a capture
-  or a commitment edit, a Go/decline/approve is not queued through the outbox.
-  A follow-up if deciding with no signal turns out to matter.
+- **Action decisions (and Queued reordering) are online-first, not
+  offline-durable.** Unlike a capture or a commitment edit, a Go/decline/approve
+  or a drag is not queued through the outbox. A follow-up if deciding or
+  reordering with no signal turns out to matter.
+- **The Queued drag is not covered by an automated test.** The e2e follows Go
+  onto the board, but the drag-to-reorder itself is exercised only by hand —
+  Playwright drag is flaky and the offline suite already skips WebKit. Reordering
+  on the engine the app ships to (iOS Safari) is unverified by CI.
 - **B-1 needs a device.** The nav-gap fix cannot be reproduced in the harness;
   it needs the installed iPhone PWA.
 
