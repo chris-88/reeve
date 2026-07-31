@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
 import { startOutboxWatcher, subscribe } from "@/lib/outbox";
+import { purgeQueryCache } from "@/lib/query";
 import { requestPersistentStorage } from "@/lib/draft";
 import { syncSubscription, watchSubscriptionChanges } from "@/lib/push";
 import { cn } from "@/lib/utils";
@@ -56,7 +57,15 @@ export default function App() {
       setSession(data.session);
       setReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      // F10.3: a refresh token that cannot be renewed — typically after a long
+      // spell offline — ends in a SIGNED_OUT once the app is back online rather
+      // than in silent 401s. setSession(null) returns to sign-in; purge the
+      // cached rows so none survive into the next session. The outbox and the
+      // draft are left alone: they belong to the device and to the same user.
+      if (event === "SIGNED_OUT") void purgeQueryCache();
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
