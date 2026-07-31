@@ -1,3 +1,5 @@
+// Vitest config for the unit and integration suites under `tests/` — the `@/`
+// alias, and the long timeouts and serial runs the live-backend tests need.
 import { defineConfig } from "vitest/config";
 import path from "node:path";
 
