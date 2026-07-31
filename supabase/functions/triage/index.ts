@@ -156,9 +156,10 @@ Deno.serve(async (req) => {
       .eq("id", captureId);
 
     // AQ-3 producer: an actionable capture becomes a proposed action, so it
-    // surfaces in "Needs you". Conservative per the spec's §8 Q1 — only a
-    // capture that carries a commitment is treated as actionable; the rest stay
-    // filed as reference, findable in Search.
+    // surfaces in "Needs you". Broader per the spec's §8 Q1 as decided with
+    // Chris — the model judges actionability (anything that reads as intent to
+    // do), not a commitment-derived heuristic. A pure note stays filed as
+    // reference, findable in Search.
     //
     // Best-effort, after 'done' and deliberately non-fatal: filing is the
     // guarantee, and a convenience layered on top must never block or fail a
@@ -170,8 +171,10 @@ Deno.serve(async (req) => {
         captureId,
         userId: capture.user_id,
         areaId,
-        title: result.title,
-        actionable: result.commitments.some((c) => c.text.trim().length > 0),
+        // The model's imperative action title; the capture's display title is
+        // the fallback if it flagged the capture actionable but named none.
+        title: result.action_title?.trim() || result.title,
+        actionable: result.actionable,
       });
     } catch (actionErr) {
       console.error(`[triage] proposed action for ${captureId} failed`, actionErr);
@@ -257,9 +260,10 @@ async function writeCommitments(
  * AQ-3: promote an actionable capture into a proposed action.
  *
  * Idempotent — one action per capture in v1 — so re-triage (the sweeper, the
- * retry button) does not stack duplicates. The title is the capture's own; a
- * richer "draft the invoice for Mary" phrasing is a later model call, not now.
- * Non-actionable captures produce nothing and stay reference notes.
+ * retry button) does not stack duplicates. The title is the model's imperative
+ * `action_title` ("Draft the invoice for Mary"), with the capture's own title
+ * as the fallback. Non-actionable captures produce nothing and stay reference
+ * notes.
  */
 async function writeProposedAction(
   db: SupabaseClient,

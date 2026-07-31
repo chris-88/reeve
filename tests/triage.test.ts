@@ -54,9 +54,17 @@ describe("TRIAGE_JSON_SCHEMA", () => {
     expect(TRIAGE_JSON_SCHEMA).not.toHaveProperty("$schema");
   });
 
-  it("requires the five fields the Edge Function writes", () => {
+  it("requires the fields the Edge Function writes, including the Broader actionability pair", () => {
     expect((TRIAGE_JSON_SCHEMA as { required: string[] }).required).toEqual(
-      expect.arrayContaining(["area_id", "title", "summary", "entities", "commitments"]),
+      expect.arrayContaining([
+        "area_id",
+        "title",
+        "summary",
+        "entities",
+        "commitments",
+        "actionable",
+        "action_title",
+      ]),
     );
   });
 });
@@ -70,10 +78,37 @@ describe("TriageResult", () => {
     commitments: [
       { text: "Put the bins out", due_text: "Tuesday", due_at: "2026-07-28" },
     ],
+    actionable: true,
+    action_title: "Put the bins out",
   };
 
   it("accepts well-formed output", () => {
     expect(TriageResult.safeParse(valid).success).toBe(true);
+  });
+
+  it("accepts a non-actionable note with a null action title", () => {
+    // Broader (§8 Q1): a pure reference is not actionable, and says so with a
+    // null action_title rather than an omitted one.
+    const r = TriageResult.safeParse({
+      ...valid,
+      commitments: [],
+      actionable: false,
+      action_title: null,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a missing actionable flag", () => {
+    // The producer reads result.actionable directly; structured outputs makes
+    // it required, so an omitted flag is a validation failure, not a false.
+    const { actionable: _omitted, ...partial } = valid;
+    expect(TriageResult.safeParse(partial).success).toBe(false);
+  });
+
+  it("rejects a missing action_title", () => {
+    // Required-nullable: null is how "no action" is said, never omission.
+    const { action_title: _omitted, ...partial } = valid;
+    expect(TriageResult.safeParse(partial).success).toBe(false);
   });
 
   it("accepts entirely empty entities", () => {
@@ -139,6 +174,14 @@ describe("buildTriageSystemPrompt", () => {
   it("orders areas by sort_order", () => {
     const p = prompt();
     expect(p.indexOf("work (Work)")).toBeLessThan(p.indexOf(`${UNSORTED_AREA_ID} (Unsorted)`));
+  });
+
+  it("instructs the model to judge actionability and name an action title", () => {
+    // Broader (§8 Q1): the model, not a commitment heuristic, decides what
+    // reaches "Needs you".
+    const p = prompt().toLowerCase();
+    expect(p).toContain("actionable");
+    expect(p).toContain("action_title");
   });
 
   it("states the capture's own date, with its weekday", () => {

@@ -72,6 +72,9 @@ Rules:
   - due_text: the date phrase exactly as it appears in the capture. Null when he named no date. Do not paraphrase it and do not invent one.
   - due_at: due_text resolved to a calendar date as YYYY-MM-DD. A bare weekday means the next one on or after the capture's date. Null when the phrase is genuinely open-ended ("at some point", "when I get a chance") — a wrong date is worse than no date, because a wrong one is acted on.
   - An empty array is correct and common. A capture that records something rather than promising something has no commitments.
+- actionable: does this capture ask for something to be *done*? Set true when it reads as a task or an intent to act — draft, send, ring, reply, fix, buy, book, arrange, chase, decide. This is broader than a commitment: it need not be a promise Chris made, and it need not name a date. Set false for a pure note — a reference, an observation, a quote, a fact to remember, or an idea with no ask attached.
+  - When it sits between the two, lean towards actionable. A surfaced item Chris dismisses in one tap costs him less than one he never sees; the queue is where he decides, so let it decide.
+- action_title: when actionable is true, a short imperative naming the thing to do — "Ring the foreman about the pour", "Draft the invoice for Mary". At most 10 words, no trailing full stop. Null when actionable is false.
 
 Write in Irish/British English.`;
 }

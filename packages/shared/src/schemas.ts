@@ -200,6 +200,17 @@ export const TriageResult = z.object({
   commitments: z
     .array(ExtractedCommitment)
     .describe("Things Chris said he would do. An empty array is correct when there are none."),
+  actionable: z
+    .boolean()
+    .describe(
+      "True when the capture is something to act on — a task or an intent to do, draft, send, ring, reply, fix, buy, book, arrange, chase or decide. Broader than a commitment: it need not be a promise and need not carry a date. False for a pure note — a reference, observation, quote, fact-to-remember, or idea with no ask attached.",
+    ),
+  action_title: z
+    .string()
+    .nullable()
+    .describe(
+      "When actionable, a short imperative naming the thing to do — 'Ring the foreman about the pour', 'Draft the invoice for Mary'. At most 10 words, no trailing full stop. Null when actionable is false.",
+    ),
 });
 export type TriageResult = z.infer<typeof TriageResult>;
 
