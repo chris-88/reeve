@@ -1,5 +1,5 @@
 import { del, get, update } from "idb-keyval";
-import type { CommitmentStatus } from "@reeve/shared";
+import type { ActionStatus, CommitmentStatus } from "@reeve/shared";
 import { supabase } from "./supabase";
 import { report, trail } from "./observability";
 
@@ -98,6 +98,34 @@ export type ChangeRequestOp = {
   patch: ChangeRequestPatch;
 };
 
+/**
+ * The decisions the "Needs you" stream takes on an action — Go, decline,
+ * approve, redo, pin, undo. All are status/timestamp transitions; the same
+ * reasoning as a commitment or change-request decision applies: a judgment
+ * made with no signal must be durable, so it travels the outbox rather than a
+ * bare online write. (A reeve Go still needs the network for its model call and
+ * is not queued here.)
+ */
+export type ActionPatch = {
+  status?: ActionStatus;
+  brief?: string;
+  result?: string | null;
+  pinned_at?: string | null;
+  dispatched_at?: string | null;
+  decided_at?: string | null;
+  // Work-board fields (AQ-7): a dispatch or redo taken offline must carry the
+  // lane position, and a redo must clear the assignee, durably too.
+  queue_position?: number | null;
+  assignee?: string | null;
+  started_at?: string | null;
+};
+
+export type ActionOp = {
+  kind: "action";
+  actionId: string;
+  patch: ActionPatch;
+};
+
 export type PendingOp = {
   id: string;
   /**
@@ -113,7 +141,7 @@ export type PendingOp = {
   lastError?: string;
   /** Retries exhausted. Kept forever; only an explicit user retry revives it. */
   deadLettered: boolean;
-  op: CaptureOp | CommitmentOp | ChangeRequestOp;
+  op: CaptureOp | CommitmentOp | ChangeRequestOp | ActionOp;
 };
 
 type Listener = (items: PendingOp[]) => void;
@@ -339,6 +367,54 @@ export async function enqueueChangeRequestPatch(
 }
 
 /**
+ * Queue a decision on an action — the "Needs you" transitions (AQ-2/AQ-5).
+ *
+ * Keyed-merge like the others: decide then undo then re-decide collapses to one
+ * durable write, not three that race. The update is idempotent, so a replay
+ * after a lost response is a no-op.
+ */
+export async function enqueueActionPatch(
+  actionId: string,
+  userId: string,
+  patch: ActionPatch,
+): Promise<void> {
+  const id = `action:${actionId}`;
+  await mutate((items) => {
+    const existing = items.find((i) => i.id === id);
+    const merged: PendingOp = {
+      id,
+      userId,
+      attempts: 0,
+      nextAttemptAt: 0,
+      deadLettered: false,
+      op: {
+        kind: "action",
+        actionId,
+        patch: {
+          ...(existing?.op.kind === "action" ? existing.op.patch : {}),
+          ...patch,
+        },
+      },
+    };
+    return existing ? items.map((i) => (i.id === id ? merged : i)) : [...items, merged];
+  });
+  void flush();
+}
+
+/** The same optimistic overlay, for an action in the stream. */
+export function pendingActionPatch(
+  items: readonly PendingOp[],
+  actionId: string,
+): ActionPatch | undefined {
+  let merged: ActionPatch | undefined;
+  for (const item of items) {
+    if (item.op.kind !== "action" || item.op.actionId !== actionId) continue;
+    merged = { ...merged, ...item.op.patch };
+  }
+  return merged;
+}
+
+/**
  * Make everything eligible again, immediately.
  *
  * Backoff exists so a failing server is not hammered. It is the wrong
@@ -428,6 +504,16 @@ async function send(item: PendingOp): Promise<string | null> {
       .from("change_requests")
       .update(item.op.patch)
       .eq("id", item.op.changeRequestId)
+      .eq("user_id", item.userId)
+      .abortSignal(timeout());
+    return error ? error.message : null;
+  }
+
+  if (item.op.kind === "action") {
+    const { error } = await supabase
+      .from("actions")
+      .update(item.op.patch)
+      .eq("id", item.op.actionId)
       .eq("user_id", item.userId)
       .abortSignal(timeout());
     return error ? error.message : null;

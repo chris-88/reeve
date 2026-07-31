@@ -242,5 +242,42 @@ describe("commitment ops", () => {
   });
 });
 
+describe("action ops", () => {
+  const ACTION = "33333333-3333-3333-3333-333333333333";
+
+  it("syncs a decision and clears it", async () => {
+    await OUTBOX.enqueueActionPatch(ACTION, USER, { status: "declined", decided_at: "x" });
+    await flush();
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(await peek()).toHaveLength(0);
+  });
+
+  it("survives a failure and stays queued, overlaid by pendingActionPatch", async () => {
+    patch.mockResolvedValue({ error: { message: "offline" } });
+    await OUTBOX.enqueueActionPatch(ACTION, USER, { status: "done", decided_at: "x" });
+    await flush();
+    expect(await peek()).toHaveLength(1);
+    // The stream reads the overlay, so an approve made with no signal keeps the
+    // action out of "Needs you" across a cold reload.
+    expect(OUTBOX.pendingActionPatch(await peek(), ACTION)).toEqual({
+      status: "done",
+      decided_at: "x",
+    });
+  });
+
+  it("merges a decision and an undo into one write", async () => {
+    // Decline then Undo must be one durable write, not two that race.
+    patch.mockResolvedValue({ error: { message: "offline" } });
+    await OUTBOX.enqueueActionPatch(ACTION, USER, { status: "declined", decided_at: "x" });
+    await OUTBOX.enqueueActionPatch(ACTION, USER, { status: "proposed", decided_at: null });
+    const queued = await peek();
+    expect(queued).toHaveLength(1);
+    expect(OUTBOX.pendingActionPatch(queued, ACTION)).toEqual({
+      status: "proposed",
+      decided_at: null,
+    });
+  });
+});
+
 // The v1 -> v2 migration runs once per module instance, so it gets its own
 // file: see tests/outbox-migration.test.ts.
