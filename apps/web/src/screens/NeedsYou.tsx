@@ -31,6 +31,7 @@ import {
   orderActions,
 } from "@/lib/actions";
 import { useOnline } from "@/lib/useOnline";
+import { useRealtimeChannel } from "@/lib/useRealtimeChannel";
 import CaptureDetail from "@/components/CaptureDetail";
 import CaptureSearch from "@/components/CaptureSearch";
 import ActionDetail from "@/components/ActionDetail";
@@ -155,22 +156,33 @@ export default function NeedsYou({ userId }: { userId: string }) {
     [crRows, pending],
   );
 
-  useEffect(() => {
-    const channel = supabase
-      .channel("needs-you-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "actions" }, () => {
-        void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-        void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "captures" }, () => {
-        void qc.invalidateQueries({ queryKey: ["inflight-captures"] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "change_requests" }, () => {
-        void qc.invalidateQueries({ queryKey: ["change_requests"] });
-      })
-      .subscribe();
-    return () => void supabase.removeChannel(channel);
-  }, [qc]);
+  useRealtimeChannel({
+    channel: "needs-you-changes",
+    userId,
+    subscriptions: [
+      {
+        table: "actions",
+        onChange: () => {
+          void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+          void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+        },
+      },
+      {
+        table: "captures",
+        onChange: () => void qc.invalidateQueries({ queryKey: ["inflight-captures"] }),
+      },
+      {
+        table: "change_requests",
+        onChange: () => void qc.invalidateQueries({ queryKey: ["change_requests"] }),
+      },
+    ],
+    onReconnect: () => {
+      void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+      void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+      void qc.invalidateQueries({ queryKey: ["inflight-captures"] });
+      void qc.invalidateQueries({ queryKey: ["change_requests"] });
+    },
+  });
 
   // Overlay any pending outbox decision, so an action decided with no signal
   // stays out of the stream even if the query refetches before the queue
