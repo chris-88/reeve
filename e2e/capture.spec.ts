@@ -184,12 +184,12 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   await expect(page.getByText(commitment.text as string)).toBeVisible();
 
   // AQ-7: saying "Go" on the proposed action moves it off Needs you and onto the
-  // Work board's Queued lane.
+  // Work board's Queued lane. The card carries the action's own title.
   await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
-  await page.getByText(row.title as string).first().click();
+  await page.getByText(action!.title as string).first().click();
   await page.getByRole("button", { name: "Go", exact: true }).click();
   await page.getByRole("navigation").getByRole("button", { name: "Work" }).click();
-  await expect(page.getByText(row.title as string)).toBeVisible();
+  await expect(page.getByText(action!.title as string)).toBeVisible();
 });
 
 test("a draft survives a reload", async ({ page }) => {
