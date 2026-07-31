@@ -140,9 +140,16 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   expect(row.summary).toBeTruthy();
   expect(row.entities, "empty arrays are valid, missing keys are not").toHaveProperty("people");
 
-  // Once triaged, the capture's commitment makes it a proposed action, which
-  // surfaces in "Needs you" carrying the capture's title — realtime, no reload.
-  await expect(page.getByText(row.title as string)).toBeVisible();
+  // Once triaged, an actionable capture becomes a proposed action carrying its
+  // own imperative title — the model's action_title (Broader, §8 Q1), not the
+  // capture's own title — which surfaces in "Needs you", realtime, no reload.
+  const { data: action } = await user
+    .from("actions")
+    .select("title")
+    .eq("capture_id", row.id)
+    .maybeSingle();
+  expect(action?.title, "an actionable capture becomes a proposed action").toBeTruthy();
+  await expect(page.getByText(action!.title as string)).toBeVisible();
 
   // The run is logged and costed.
   const { data: runs } = await user
