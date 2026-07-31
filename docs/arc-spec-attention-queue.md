@@ -1,7 +1,8 @@
 # Reeve: The attention queue
 
-Status: **Built — AQ-1…AQ-6 on branch `attention-queue`.** Manual dispatch/
-return only (automation is `spec.md` §9); two follow-ups flagged in §0.
+Status: **AQ-1…AQ-6 built, merged and deployed** to `app.chrisquinn.ie`.
+**AQ-7 (Work board) + AQ-8 (Library) specced in §10, not yet built** (branch
+`work-board`). Manual dispatch/return only (automation is `spec.md` §9).
 Owner: Chris
 Audience: implementing session picking this up cold
 Supersedes: the "Inbox → Board" draft (kanban middle layer), replaced after the
@@ -26,7 +27,9 @@ before it was implemented; the two corrections that needed making are below.
 | P1 | **AQ-3** AI-proposed order + producer | ✅ Done — triage deployed |
 | P1 | **AQ-4** The "Go" handoff | ✅ Done — reeve-routing flagged below |
 | P1 | **AQ-5** The result loop | ✅ Scaffold — manual; §9 automates |
-| P1 | **AQ-6** Search + archive | ✅ Done |
+| P1 | **AQ-6** Search + archive | ✅ Done — becomes AQ-8 |
+| P1 | **AQ-7** The Work board (§10) | ⬜ Specced, not built |
+| P1 | **AQ-8** The Library (§10) | ⬜ Specced, not built |
 
 ### Verified
 - 102 unit tests (incl. `actions` RLS, `orderActions`, `assembleBrief`) and 7
@@ -169,23 +172,34 @@ disagree you pin one thing to the top, you never maintain an order.
 
 ## 3. Information architecture
 
-Three surfaces. Each answers one question; none is a workspace.
+Each surface answers one question. Four answer questions about *your* attention
+and time; one — **Work** — is where you direct your *assistants*, and it is
+deliberately the one workspace in the app (see §10 and AQ-7 for why that is not
+a contradiction).
+
+> **Amended (§10).** This section originally named three surfaces and no
+> workspace. Living with it surfaced a real gap — no way to *see* the pile or
+> to direct what assistants work on next — so **Work** and **Library** were
+> added. The reasoning is in §10; the features are AQ-7 and AQ-8.
 
 | Surface | The question it answers | Contents |
 |---|---|---|
 | **Write** | — (the capture surface, unchanged) | the text field |
-| **Needs you** | "What needs a decision from me?" | proposed actions + agent results awaiting approval, AI-ordered |
+| **Needs you** | "What needs a decision from me?" | proposed actions + agent results awaiting approval, AI-ordered — never dragged |
+| **Work** *(AQ-7)* | "What are my assistants doing, and what's next?" | dispatched work in **Queued → Working → Done**; you order Queued |
 | **Due** | "What do I owe, and when?" | commitments, by date (unchanged) |
+| **Library** *(AQ-8)* | "Let me see / find what I've captured" | every capture, browsable and searchable; off the primary nav |
 
 - The old **Inbox** (a chronological log of every capture) is **retired as a
-  tab.** Its review job moves to *Needs you*; its history job moves to **Search**
-  (§5, AQ-6), off the primary nav. Empty *Needs you* = you're caught up, which
-  is success, not absence.
-- **Nav:** three tabs — Write · Needs you · Due. The in-flight dot moves to the
-  *Needs you* icon and means "something is waiting on you."
-- **Overview** — the one real thing a board gave — comes from **Due** (time) plus
-  a quiet "in flight" line in *Needs you* showing what agents are currently
-  working. A status list, not a workspace.
+  tab.** Its review job is *Needs you*; its history job is **Library** (AQ-8).
+- **Nav:** four tabs — Write · Needs you · Work · Due. **Library** sits behind
+  an icon in the header, not a tab. The in-flight dot on *Needs you* means
+  "something is waiting on **you**"; a decision, not a status.
+- **The board came back, on purpose.** §1 cut a board because arranging your own
+  captures for a hypothetical robot was logistics. Work is a different board:
+  you are not sorting notes, you are directing assistants — seeing what each is
+  on and ordering what they pick up next. That only has value once more than one
+  thing is in flight, which is exactly the reality this adds for.
 
 ---
 
@@ -490,3 +504,128 @@ session can trust the doc without re-reading the chat.
 - **Hard delete** — excluded by decision; archive only.
 - **Automated agent dispatch and return** — manual for now; automation is
   `spec.md` §9.
+
+---
+
+## 10. Amendment — the Work board & the Library (AQ-7, AQ-8)
+
+Added after AQ-1…AQ-6 shipped and Chris lived with them. Two observations, both
+the "earned by observed need" trigger the whole project runs on:
+
+> "Without the backlog it feels like something is missing — I want to see what's
+> on the list, even if that's not how I take action."
+>
+> "I want to see what each assistant is working on, and to prioritise what they
+> pick up next."
+
+The first is **awareness**; the second is **direction**. Neither is the logistics
+§1 cut. §1 removed a board where you arranged your own captures for a robot that
+did not exist — busywork. Seeing your pile is not busywork, and directing a team
+of assistants is not busywork; both become valuable precisely as the system fills
+with things and, eventually, with agents. The attention queue nailed *deciding*
+and left *seeing* and *directing* on the floor. These put them back.
+
+### AQ-7 — The Work board (direct your assistants)
+
+**New:** `apps/web/src/screens/Work.tsx`, a nav entry, and a `Work` icon.
+
+Once you say **Go** on a proposed action (AQ-4), it leaves *Needs you* and enters
+the Work board — the operational view of what your assistants are doing and will
+do next. Three lanes:
+
+| Lane | Meaning | Order |
+|---|---|---|
+| **Queued** | Dispatched, waiting to be picked up | **You set it** — drag to prioritise; this order *is* "what's next" |
+| **Working** | An assistant has it | by pick-up; each card shows its assistant |
+| **Done** | Approved / completed | recent first; older fades to the Library |
+
+**This is the one place order is manual, and it is deliberate.** AQ-3 forbids
+dragging in *Needs you* because you should not arrange your own attention — the
+AI proposes it. The Work queue is the opposite case: it is your assistants'
+backlog, and setting what scarce agent capacity does next is direction, not
+logistics. So the `position` the pivot removed from `actions` comes back **here
+only**, scoped to the Queued lane, and justified by that distinction. State it in
+code where the drag handler lives, so no one "fixes" the inconsistency later.
+
+#### The model
+
+- **P1-F7.1** `action_status` gains **`working`**. The lanes map: Queued =
+  `dispatched`, Working = `working`, Done = `done`. (`review` still routes to
+  *Needs you*, not the board — a result needs *you*, not an assistant.)
+- **P1-F7.2** `actions.queue_position double precision` — fractional index for
+  the Queued lane, null elsewhere. Drag writes the midpoint of its neighbours,
+  as the abandoned board draft's `tasks.position` did.
+- **P1-F7.3** `actions.assignee text` and `actions.started_at timestamptz`.
+  `assignee` is the assistant working the card. **Until real agents exist it is
+  a manual label** — you set it, or it is you — and the column is what lets §9
+  wire real agent identities in without a reshape. When richer identity is
+  earned, `assignee` becomes a foreign key to an `assistants` table; not now.
+- **P1-F7.4** Transitions: `dispatched → [pick up] → working` (sets `assignee`,
+  `started_at`); `working → [result] → review` (into *Needs you*, AQ-5);
+  `working → done` directly; and reordering within Queued writes
+  `queue_position`. All manual for v1.
+
+#### Where it sits, and what moves
+
+- **P1-F7.5** Nav becomes four tabs: Write · Needs you · Work · Due. The **"In
+  flight" line in *Needs you* (AQ-5) is removed** — dispatched work now lives on
+  the Work board's Queued/Working lanes, which is its proper home. *Needs you*
+  goes back to being only decisions.
+- **P1-F7.6** Mobile-first, like everything else: a single scroll with the three
+  lanes stacked, Queued reorderable by drag; the same three-column view widens
+  at `sm:`. Reuse the accessible DnD approach — but confined to reordering *one*
+  lane (Queued), which is far simpler than the cross-lane board that was cut. A
+  card taps to the same detail sheet (`ActionDetail`), extended with the pick-up
+  / assign / done controls.
+- **P1-F7.7** Reordering is online-first and optimistic for v1, consistent with
+  the other action decisions; offline-durable reordering through the outbox is
+  the same noted follow-up as the rest (§0).
+
+**Acceptance.** Going on an action lands it in Queued; dragging Queued sets the
+pick-up order and it survives a reload; marking a card *working* assigns it and
+shows the assistant; a result moves it into *Needs you* as Approve/Redo; done
+lands in Done. Ordering is operable by keyboard and screen reader. No drag exists
+anywhere except the Queued lane.
+
+### AQ-8 — The Library (see everything)
+
+**Changes:** `apps/web/src/components/CaptureSearch.tsx` (AQ-6), promoted.
+
+AQ-6 built a search box that happens to list everything when empty. AQ-8 makes
+that its *primary* mode: open it and you are **browsing the whole pile**, newest
+first; typing narrows. It is for looking and recall, and it **never asks you to
+act** — the one rule that keeps it a library, not a second queue.
+
+- **P1-F8.1** Browse-first: the empty state is the full list (it already is —
+  make it feel intentional, not like a search waiting for input).
+- **P1-F8.2** Filterable by area, like the old Inbox chips. Archived are tucked
+  away by default and shown on a toggle (and, as today, when a search matches
+  one). Archiving still lives here (AQ-6).
+- **P1-F8.3** Reached from a header icon (present on Write and Needs you), not a
+  tab — the tab budget is spent on Work, and browsing is a pull, not a
+  destination you live in. Revisit only if it proves too buried.
+
+**Acceptance.** Opening the Library shows everything without typing; area filter
+and archived toggle work; any capture — a plain note with no action, an archived
+one — is visible here without a search term. It offers no Go/approve/decide
+control.
+
+### Build order (continues §7)
+
+8. **AQ-8** — Library first. It is the smaller change and it re-answers the
+   original "I can't see my stuff," so it is worth landing on its own.
+9. **AQ-7** — the Work board: schema (`working`, `queue_position`, `assignee`,
+   `started_at`), then the screen and the Queued-lane drag, then the
+   `ActionDetail` pick-up/assign/done controls.
+
+### Still out of scope — and why
+
+- **Real assistants.** No agent picks anything up automatically; `assignee` and
+  the Working lane are hand-driven until `spec.md` §9's execution layer exists.
+  This spec builds the cockpit; §9 supplies the engine.
+- **An `assistants` table / identity.** A text label is enough to prove the
+  shape. Earn the richer model when there is more than one real assistant to
+  name.
+- **Auto-prioritisation of the queue.** You order it. The AI ordering that
+  *Needs you* uses (AQ-3) is about your attention; the work queue is yours to
+  direct.
