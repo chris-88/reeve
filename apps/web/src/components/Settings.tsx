@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ResponsiveSheet from "@/components/ResponsiveSheet";
 import { disablePush, enablePush, pushState, type PushState } from "@/lib/push";
+import { pendingOutboxCount, signOut } from "@/lib/session";
 
 /**
  * WP-F4.5: the notification state, stated honestly.
@@ -16,10 +17,28 @@ import { disablePush, enablePush, pushState, type PushState } from "@/lib/push";
 export default function Settings({ userId, onClose }: { userId: string; onClose: () => void }) {
   const [state, setState] = useState<PushState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     void pushState().then(setState);
   }, []);
+
+  async function onSignOut() {
+    // F10.2: warn if there is unsent work — it stays on the device, but the
+    // user should know why signing back in shows it still pending.
+    const n = await pendingOutboxCount();
+    if (n > 0 && !confirming) {
+      setPendingCount(n);
+      setConfirming(true);
+      return;
+    }
+    setSigningOut(true);
+    // App re-renders to the sign-in screen on the auth event; this sheet
+    // unmounts with it, so there is nothing to reset here.
+    await signOut();
+  }
 
   async function toggle() {
     setBusy(true);
@@ -93,6 +112,47 @@ export default function Settings({ userId, onClose }: { userId: string; onClose:
                 the Home Screen.
               </span>
             </p>
+          )}
+        </div>
+
+        <div className="border-border/40 border-t pt-6">
+          <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
+            Account
+          </h3>
+
+          {confirming ? (
+            <div className="mt-2.5 space-y-3">
+              <p className="text-muted-foreground text-sm">
+                {pendingCount} unsent {pendingCount === 1 ? "capture" : "captures"} will stay on
+                this device and sync when you sign back in. Sign out anyway?
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" disabled={signingOut} onClick={() => void onSignOut()}>
+                  Sign out anyway
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={signingOut}
+                  onClick={() => setConfirming(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={signingOut}
+              onClick={() => void onSignOut()}
+              className="mt-2.5"
+            >
+              <LogOut className="size-4" aria-hidden />
+              Sign out
+            </Button>
           )}
         </div>
       </div>

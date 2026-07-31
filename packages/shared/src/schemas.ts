@@ -12,6 +12,14 @@ export type CaptureSource = z.infer<typeof CaptureSource>;
 /** The area a capture could not be confidently placed in. Never fail — route here. */
 export const UNSORTED_AREA_ID = "unsorted";
 
+/**
+ * The area for thoughts about building Reeve itself. An action in this area
+ * routes through the existing change-request pipeline (AQ-4) — draft → file →
+ * ship — rather than a generic handoff. The id is the seed's own, and the
+ * `draft-change-request` function selects on it.
+ */
+export const REEVE_AREA_ID = "reeve";
+
 export const Area = z.object({
   id: z.string(),
   /** Owner-scoped since migration 0003. `id` is unique per owner, not globally. */
@@ -208,6 +216,17 @@ export const TriageResult = z.object({
   commitments: z
     .array(ExtractedCommitment)
     .describe("Things Chris said he would do. An empty array is correct when there are none."),
+  actionable: z
+    .boolean()
+    .describe(
+      "True when the capture is something to act on — a task or an intent to do, draft, send, ring, reply, fix, buy, book, arrange, chase or decide. Broader than a commitment: it need not be a promise and need not carry a date. False for a pure note — a reference, observation, quote, fact-to-remember, or idea with no ask attached.",
+    ),
+  action_title: z
+    .string()
+    .nullable()
+    .describe(
+      "When actionable, a short imperative naming the thing to do — 'Ring the foreman about the pour', 'Draft the invoice for Mary'. At most 10 words, no trailing full stop. Null when actionable is false.",
+    ),
 });
 export type TriageResult = z.infer<typeof TriageResult>;
 

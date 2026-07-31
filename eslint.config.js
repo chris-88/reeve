@@ -19,6 +19,14 @@ export default tseslint.config(
       "**/test-results/**",
       // shadcn components are vendored; upstream owns their style.
       "apps/web/src/components/ui/**",
+      // Local-only, gitignored trees: the cross-platform skill library, its
+      // human guide, and the Obsidian vault config. Absent in CI (never
+      // committed), but present on a local machine — without these, `pnpm lint`
+      // trips over a vendored Obsidian plugin bundle and the library's own
+      // config files, none of which is Reeve's code.
+      "skills/**",
+      "docs/skills/**",
+      "**/.obsidian/**",
     ],
   },
   js.configs.recommended,

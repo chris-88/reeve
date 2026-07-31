@@ -8,6 +8,7 @@ import Settings from "@/components/Settings";
 import { supabase } from "@/lib/supabase";
 import { enqueueCommitmentPatch, pendingPatch, subscribe, type PendingOp } from "@/lib/outbox";
 import { useOnline } from "@/lib/useOnline";
+import { useRealtimeChannel } from "@/lib/useRealtimeChannel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -77,15 +78,18 @@ export default function Due({ userId }: { userId: string }) {
   });
 
   // Rows appear as captures are triaged, and change when another device acts.
-  useEffect(() => {
-    const channel = supabase
-      .channel("commitments-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "commitments" }, () =>
-        qc.invalidateQueries({ queryKey: ["commitments"] }),
-      )
-      .subscribe();
-    return () => void supabase.removeChannel(channel);
-  }, [qc]);
+  // The shared hook keeps the channel alive across a backgrounded PWA (F9).
+  useRealtimeChannel({
+    channel: "commitments-changes",
+    userId,
+    subscriptions: [
+      {
+        table: "commitments",
+        onChange: () => void qc.invalidateQueries({ queryKey: ["commitments"] }),
+      },
+    ],
+    onReconnect: () => void qc.invalidateQueries({ queryKey: ["commitments"] }),
+  });
 
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
 
