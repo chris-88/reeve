@@ -48,7 +48,7 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 | `docs/arc-spec-attention-queue.md` | **Merged — AQ-1…AQ-8 plus F9/F10 and four gap-closures.** The middle of the app is "Needs you", with a Work board (AQ-7) and a Library (AQ-8). See its §0 |
 | `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 skipped, superseded by P1-F13. **F9 and F10 done with the attention queue; F11 outstanding** |
-| `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
+| `docs/arc-spec-web-push.md` | **Built, deployed, and proven** — WP-F6.3 (a push on the iPhone) confirmed 2026-07-31 |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
 ### The attention queue (built and merged)
@@ -86,10 +86,18 @@ Read it before starting anything below.
   approved from the app, filed, and — when its PR merges — marked shipped with
   a push back. Stages 0–5 are all built and deployed; only Stage 6 (the general
   approval ledger, §8) remains, and it is described, not approved.
-- **Two things in Phase 1 are proven only by hand, not by CI**, both by
-  design: WP-F6.3 (a push landing on the iPhone) and the real
-  GitHub→webhook→shipped→push delivery. Every function, signature, transition
-  and RLS path under them is verified; only the last physical hop is manual.
+- **The two hand-only gates are now both proven (2026-07-31).** WP-F6.3 (a push
+  landing on the iPhone) and the real GitHub→webhook→shipped→push delivery were
+  confirmed together: a change request drafted and approved in the app shipped
+  through the reeve loop, its PR merged, and the "shipped" push arrived on
+  Chris's phone. Nothing in the loop is unproven any more.
+- **The coding step is now automated.** `.github/workflows/claude.yml` (Claude
+  Code GitHub Action, `@v1`) opens a PR from any issue that mentions `@claude`,
+  so a reeve change request filed with "hand off to a coding agent" on gets its
+  PR drafted for it. Needs the Claude GitHub App installed and an
+  `ANTHROPIC_API_KEY` repo secret — both set up 2026-07-31 and proven with a
+  test issue. Nothing auto-merges: CI and a human merge still gate it, and Reeve
+  marks shipped only on merge.
 - **The scheduled clustering pass is a first version** — it drafts the
   unpromoted `reeve` pile as one cluster and skips a pile over eight, recording
   the miss. Real clustering wants P1-F4 retrieval; §7 sanctions earning it
@@ -115,10 +123,10 @@ Read it before starting anything below.
   `SENTRY_DSN` / `VITE_SENTRY_DSN` / `SENTRY_AUTH_TOKEN`. Check before
   assuming one is missing.
 
-Web Push is built and deployed — `docs/arc-spec-web-push.md` §0 records what
-was verified and what was not. **Delivery has never been proven**: everything
-up to the push service accepting the request is exercised, but a notification
-has not arrived on a device. That is WP-F6.3 and it needs the iPhone.
+Web Push is built, deployed, and **proven** — `docs/arc-spec-web-push.md` §0
+records it. WP-F6.3 (a notification arriving on the installed iPhone PWA) was
+confirmed on 2026-07-31 when a reeve-loop change shipped and its push landed on
+the phone. Delivery is no longer a caveat.
 
 A spec review on 23 July confirmed Stages 0–4 and Web Push are on the correct
 path. It changed one thing: **WP-F3.4 was amended** — a brief headline may name

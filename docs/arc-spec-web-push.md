@@ -1,8 +1,9 @@
 # Reeve: Architecture Spec — Web Push
 
-Status: **Built and deployed, 22 July 2026.** One acceptance criterion is
-outstanding and it is Chris's: WP-F6.3, a notification arriving on a real
-iPhone installed to the Home Screen.
+Status: **Built, deployed, and proven.** WP-F6.3 — a notification arriving on a
+real iPhone installed to the Home Screen — was confirmed by Chris on 2026-07-31:
+a change request shipped through the reeve loop and its "shipped" push landed on
+the phone. No acceptance criteria outstanding.
 Owner: spec-owned. Implementation runs in separate sessions — where this
 document is wrong, ambiguous or silent, raise it against the spec rather than
 deciding it in the diff.
@@ -23,7 +24,7 @@ Feature IDs are prefixed `WP-`.
 | **WP-F3** Service worker handlers | ✅ Done |
 | **WP-F4** Asking for permission | 🔶 Capability and settings path done. The **inline ask (WP-F4.3) has no home yet** — its moment is a change request being filed, which is P1-F9 |
 | **WP-F5** Sending | ✅ Done — Edge Function `send-push` |
-| **WP-F6** Verification | 🔶 F6.1 done. **F6.3 outstanding — needs a real iPhone** |
+| **WP-F6** Verification | ✅ F6.1 done; **F6.3 proven** — a push landed on Chris's iPhone (2026-07-31) |
 
 ### Verified
 
@@ -45,14 +46,16 @@ Feature IDs are prefixed `WP-`.
   now fails on it by name (WP-F1.2). Verified with a planted value.
 - 70 unit tests and 7 end-to-end tests pass.
 
-### Not verified, and why
+### Proven on a device (2026-07-31)
 
-**A notification has never actually arrived on a device.** Everything up to the
-push service accepting the request is exercised above; delivery is not, and
-WP-F6.2 is explicit that it must not be simulated — neither Playwright engine
-can accept a real push, and a mock would test the mock. WP-F6.3 is the gate:
-install to the Home Screen on the iPhone, turn notifications on in Settings,
-and send. Until that happens this feature is built, not proven.
+**A notification arrived on the iPhone.** WP-F6.3 was the last gate, and it
+could not be simulated (WP-F6.2: neither Playwright engine accepts a real push,
+and a mock tests the mock), so it needed the installed Home-Screen PWA. It was
+confirmed end to end: a change request drafted and approved in the app shipped
+through the reeve loop (`file-change-request` → issue → PR → merge →
+`github-webhook`), and the "shipped" push landed on Chris's phone. The same run
+also proved the real GitHub→webhook→shipped→push delivery that P1-F10 left as a
+manual gate. Built, deployed, and now proven.
 
 ### Where this document was silent
 
