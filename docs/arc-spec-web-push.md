@@ -54,6 +54,17 @@ can accept a real push, and a mock would test the mock. WP-F6.3 is the gate:
 install to the Home Screen on the iPhone, turn notifications on in Settings,
 and send. Until that happens this feature is built, not proven.
 
+### Amended after review (23 July 2026)
+
+- **WP-F3.4 was in conflict with the brief and has been loosened** — the
+  headline may name the single most pressing item, one sentence, including a
+  commitment's action. See the requirement for the reasoning. **Open follow-up
+  for an implementation session:** the brief function's inline comment claims
+  the headline is "about counts, not a capture's text", which is wrong on both
+  counts; correct it to cite WP-F3.4 as amended. No behaviour change — the code
+  already sends the pressing headline; only the comment and the spec were out
+  of step.
+
 ### Where this document was silent
 
 - **There was no settings surface to put WP-F4.5 in.** The spec treats "a
@@ -198,11 +209,33 @@ Three handlers added to `apps/web/src/sw.ts`.
   row. The service worker cannot reach the Supabase client, so this posts to
   the page when one is open and falls back to a plain `fetch` against the
   REST endpoint when none is.
-- **WP-F3.4** **The payload carries identifiers, not content.** A notification
-  body may contain a change request title, which the user wrote themselves. It
-  must never contain `raw_text`, a commitment body, or anything the model
-  extracted. This is the same discipline as hardening F7.4, and it matters more
-  here because a notification renders on a lock screen.
+- **WP-F3.4** **The payload carries a headline, never the raw record.** A
+  notification may contain a user-authored title (a change request title) or a
+  short model-written headline that names what is most pressing — including one
+  commitment, by its action, where that is the single most useful thing to say.
+  It must **never** contain `raw_text`, the full body of the brief, a list of
+  commitments, or any bulk extracted output. The line is one glanceable
+  sentence versus the record itself.
+
+  *Amended 23 July 2026.* The original wording forbade "a commitment body, or
+  anything the model extracted" outright, which put it in direct conflict with
+  P1-F6 and the brief prompt — whose headline exists precisely to say "foreman
+  still not rung", not "3 items". Chris chose utility: on a single-user
+  personal system, a notification worth reading beats one that reveals nothing,
+  and the exposure is his own glance at his own phone. The `buildPushPayload`
+  field-by-field copy (WP-F5) remains the hard guarantee that nothing *else*
+  leaks; this requirement now governs only what a caller may deliberately put
+  in the two text fields.
+
+  Two consequences to hold as this extends:
+  - **The bound is one sentence, not one field.** A future sender must not read
+    this as licence to stuff the body with several commitments — that is the
+    record, and the record stays behind the app.
+  - The brief function's inline comment still claims the headline is "about
+    counts, not a capture's text", which is now doubly wrong: it misdescribes
+    the prompt and predates this decision. An implementation session should
+    correct it to match this requirement. Flagged here rather than fixed in a
+    spec session.
 
 ### WP-F4 — Asking for permission
 
