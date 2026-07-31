@@ -1,8 +1,9 @@
 # Reeve: The attention queue
 
-Status: **AQ-1…AQ-8 built.** AQ-1…AQ-6 deployed to `app.chrisquinn.ie`; AQ-7
-(Work board) + AQ-8 (Library) built on branch `work-board`, awaiting merge.
-Manual dispatch/return only (automation is `spec.md` §9).
+Status: **AQ-1…AQ-8 built, plus the F9/F10 hardening and four gap-closures
+merged.** AQ-1…AQ-6 deployed to `app.chrisquinn.ie`; AQ-7 (Work board) + AQ-8
+(Library) and the gap-closures (§0) on `main`. Manual dispatch/return only
+(automation is `spec.md` §9).
 Owner: Chris
 Audience: implementing session picking this up cold
 Supersedes: the "Inbox → Board" draft (kanban middle layer), replaced after the
@@ -13,6 +14,37 @@ Companion to: `docs/spec.md` (§9 end-state), `docs/arc-spec-phase-1.md`
 ---
 
 ## 0. Implementation status
+
+### Gap-closures merged (2026-07-31)
+
+Six items the AQ build left open, or the hardening spec carried, were finished
+and merged on top of AQ-1…AQ-8, against four decisions taken with Chris. (This
+work was first built on a stale base; it was then re-applied onto current `main`
+and reconciled with the Work board — the reeve routing and the offline decisions
+both touch the files AQ-7 reworked.)
+
+- **Broader actionability (§8 Q1):** the triage producer no longer keys on a
+  commitment; the model judges intent and names an `action_title`. Redeploy the
+  `triage` function with the frontend.
+- **reeve → change-request routing (AQ-4):** a `reeve` action's Go drafts a
+  change request rather than a Work-board card an assistant can't act on.
+  **Flagged for Chris:** the action is marked `done` (it ages out of the board's
+  Done lane) and the change request becomes the living artifact, reviewed in
+  Needs you — revisit if living with it says the action should stay on the board.
+- **Change-request review re-homed** into Needs you (orphaned when the Inbox
+  retired); `Inbox.tsx`/`ReeveChangeRequests.tsx` stay unmounted, deletable once
+  proven.
+- **Offline-durable decisions:** decline/approve/redo/pin/undo travel the outbox
+  and still feed the Work board (`queue_position`/`WORK_QK`); the `actions` query
+  now persists offline.
+- **F9** — one shared realtime hook (`useRealtimeChannel`) on NeedsYou + Due.
+- **F10** — sign-out in the settings sheet (clears cache + draft, never the
+  outbox; returns to sign-in on a dead refresh token).
+
+Earned-later: automated dispatch/return (§9), F9.4 (apply-to-cache), F11, and
+the device checks (B-1 nav gap, WP-F6.3 push).
+
+### The original AQ-1…AQ-6 build
 
 Built in an isolated worktree on branch `attention-queue`, from `main` at
 `a3848b9`. Every factual claim in this document was checked against the code
