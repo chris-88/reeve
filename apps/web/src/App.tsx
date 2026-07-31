@@ -96,7 +96,7 @@ export default function App() {
     <div className="flex h-full flex-col">
       <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" && <Capture userId={session.user.id} />}
-        {screen === "needs-you" && <NeedsYou />}
+        {screen === "needs-you" && <NeedsYou userId={session.user.id} />}
         {screen === "due" && <Due userId={session.user.id} />}
       </main>
 

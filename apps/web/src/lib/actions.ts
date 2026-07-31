@@ -1,8 +1,12 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Action, Area } from "@reeve/shared";
+import { REEVE_AREA_ID } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { assembleBrief } from "@/lib/brief";
+
+/** The change-request review list, shared with NeedsYou and ReeveChangeRequests. */
+const CHANGE_REQUESTS_QK = ["change_requests"] as const;
 
 /**
  * The decisions the "Needs you" stream makes on an action (AQ-2/AQ-4/AQ-5).
@@ -104,11 +108,16 @@ export async function dispatchAction(
 /**
  * The whole "Go" flow, so the card and the detail sheet share it (AQ-4):
  * respect a Tweaked brief, otherwise assemble one from the capture; copy it to
- * the clipboard (manual dispatch); then dispatch. A reeve-area action is meant
- * to route through the change-request pipeline — flagged, wired in AQ-4's
- * follow-up rather than duplicated here.
+ * the clipboard (manual dispatch); then dispatch.
+ *
+ * A reeve-area action is the exception: it routes through the *existing*
+ * change-request pipeline (decided with Chris), so building Reeve keeps the one
+ * loop it already has — draft → review → file → @claude → PR → shipped → push —
+ * rather than a parallel clipboard handoff.
  */
 export async function goAction(qc: QueryClient, action: Action, area?: Area): Promise<void> {
+  if (action.area_id === REEVE_AREA_ID) return goReeveAction(qc, action);
+
   let brief = action.brief?.trim() ?? "";
   if (!brief) {
     const [captureRes, commitmentsRes] = await Promise.all([
@@ -129,6 +138,36 @@ export async function goAction(qc: QueryClient, action: Action, area?: Area): Pr
     /* clipboard may be unavailable; the brief is still saved on the action */
   }
   await dispatchAction(qc, action, brief);
+}
+
+/**
+ * Go on a reeve-area action: hand it to the change-request pipeline.
+ *
+ * Optimistically move the action to dispatched so the stream responds at once,
+ * then draft a change request from its capture. The draft surfaces in Needs you
+ * for review → file → ship. Inherently online — it is a model call — so unlike
+ * the plain decisions it is not made offline; on failure the action is put back
+ * for another try.
+ */
+async function goReeveAction(qc: QueryClient, action: Action): Promise<void> {
+  if (!(await apply(qc, action, { status: "dispatched", dispatched_at: now() }))) return;
+
+  const { error } = await supabase.functions.invoke("draft-change-request", {
+    body: { capture_ids: [action.capture_id] },
+  });
+
+  if (error) {
+    await supabase
+      .from("actions")
+      .update({ status: "proposed", dispatched_at: null })
+      .eq("id", action.id);
+    void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+    toast.error("Couldn't draft that change", { description: "Put back for you to try again." });
+    return;
+  }
+
+  void qc.invalidateQueries({ queryKey: CHANGE_REQUESTS_QK });
+  toast("Drafted a change", { description: "Review it in Needs you." });
 }
 
 // --- the "Do next" nudge (AQ-3) ------------------------------------------

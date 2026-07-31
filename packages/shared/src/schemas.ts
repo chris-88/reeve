@@ -12,6 +12,14 @@ export type CaptureSource = z.infer<typeof CaptureSource>;
 /** The area a capture could not be confidently placed in. Never fail — route here. */
 export const UNSORTED_AREA_ID = "unsorted";
 
+/**
+ * The area for thoughts about building Reeve itself. An action in this area
+ * routes through the existing change-request pipeline (AQ-4) — draft → file →
+ * ship — rather than a generic handoff. The id is the seed's own, and the
+ * `draft-change-request` function selects on it.
+ */
+export const REEVE_AREA_ID = "reeve";
+
 export const Area = z.object({
   id: z.string(),
   /** Owner-scoped since migration 0003. `id` is unique per owner, not globally. */
