@@ -23,6 +23,23 @@ supabase/.temp/
 docs/spec.md
 supabase/seed/areas.json
 
+# Borrowed/personal skill library and its Obsidian guide — local only, not
+# published. Leading slash anchors to the repo root so it does NOT also match
+# .claude/skills/. See docs/arc-spec-skills-integration.md §9.3.
+/skills/
+/docs/skills/
+
+# .claude/skills: the borrowed skills are symlinks into the gitignored skills/
+# library — keep them local, listed by name. Reeve's own skill files (the native
+# reeve-* and the forks) stay tracked. Add a line here when symlinking another
+# borrowed skill.
+.claude/skills/grill-with-docs
+.claude/skills/grill-me
+.claude/skills/grilling
+.claude/skills/handoff
+.claude/skills/diagnosing-bugs
+.claude/skills/tdd
+
 # Obsidian workspace state. docs/ is a vault as well as a directory.
 .obsidian/
 
