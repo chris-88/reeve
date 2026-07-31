@@ -204,6 +204,20 @@ supabase secrets set --project-ref <ref> \
 
 ---
 
+## Skills
+
+A cross-platform skill library (Claude Code + Codex) lives in `skills/`, with a
+human-readable guide in `docs/skills/`. **Both are gitignored — local only,**
+like `docs/spec.md`. Nothing is wired into `.claude/` yet (no such directory
+exists), so nothing is `/`-invokable in a session here: read the relevant
+`SKILL.md` and follow it. `ask-chris` is the router over the library.
+
+The plan to make the right subset callable — and to add the Reeve-native
+`reeve-migrate` / `reeve-ship` skills — is `docs/arc-spec-skills-integration.md`
+(Proposed). The product north star those dogfood is `docs/arc-spec-reeve-vision.md`.
+
+---
+
 ## Things that cost hours
 
 Each of these was learned the expensive way. They are not visible in the code.
