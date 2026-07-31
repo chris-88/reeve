@@ -1,0 +1,42 @@
+# Claude Code GitHub Action — closes the last manual hop in the reeve loop.
+#
+# When Reeve files a change request as a GitHub issue with an `@claude` mention
+# (approve in the app with "hand off to a coding agent" on), Claude reads the
+# issue and opens a pull request implementing it. The PR is still gated by CI
+# and your merge — nothing auto-merges — and Reeve only marks the change
+# "shipped" once that PR merges and the `github-webhook` fires.
+#
+# One-time setup by a repo admin (a workflow file alone is not enough):
+#   1. Install the Claude GitHub App on this repo: https://github.com/apps/claude
+#   2. Add an ANTHROPIC_API_KEY repository secret
+#      (Settings → Secrets and variables → Actions).
+
+name: Claude Code
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+jobs:
+  claude:
+    # Only when someone (or Reeve's filed issue) actually mentions @claude.
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
