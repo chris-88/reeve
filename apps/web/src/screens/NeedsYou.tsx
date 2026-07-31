@@ -279,6 +279,16 @@ export default function NeedsYou({ userId }: { userId: string }) {
           <div className="flex flex-col items-center gap-3 px-8 py-24 text-center">
             <CheckCheck className="text-muted-foreground/40 size-8" strokeWidth={1.5} aria-hidden />
             <p className="text-muted-foreground text-sm">You&rsquo;re all caught up.</p>
+            {/* Nothing here doesn't mean nothing captured — point to the Library
+                so logged notes don't feel lost (reeve change request). */}
+            <button
+              type="button"
+              onClick={() => setSearching(true)}
+              className="text-muted-dim hover:text-foreground inline-flex items-center gap-1.5 text-sm transition-colors"
+            >
+              <Search className="size-4" aria-hidden />
+              Everything you&rsquo;ve captured is in the Library
+            </button>
           </div>
         )}
       </div>
