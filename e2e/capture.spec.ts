@@ -175,6 +175,14 @@ test("a capture is written, synced, triaged and filed", async ({ page }) => {
   // The Due view shows it, grouped by when it is owed rather than by area.
   await page.getByRole("navigation").getByRole("button", { name: "Due" }).click();
   await expect(page.getByText(commitment.text as string)).toBeVisible();
+
+  // AQ-7: saying "Go" on the proposed action moves it off Needs you and onto the
+  // Work board's Queued lane.
+  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
+  await page.getByText(row.title as string).first().click();
+  await page.getByRole("button", { name: "Go", exact: true }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Work" }).click();
+  await expect(page.getByText(row.title as string)).toBeVisible();
 });
 
 test("a draft survives a reload", async ({ page }) => {

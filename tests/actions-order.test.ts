@@ -6,7 +6,7 @@ import type { Action } from "@reeve/shared";
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 vi.mock("sonner", () => ({ toast: Object.assign(() => {}, { error: () => {} }) }));
 
-const { orderActions } = await import("../apps/web/src/lib/actions");
+const { orderActions, positionBetween } = await import("../apps/web/src/lib/actions");
 
 function action(over: Partial<Action> & { id: string }): Action {
   return {
@@ -21,6 +21,9 @@ function action(over: Partial<Action> & { id: string }): Action {
     dispatched_at: null,
     decided_at: null,
     archived_at: null,
+    queue_position: null,
+    assignee: null,
+    started_at: null,
     created_at: "2026-07-01T00:00:00Z",
     updated_at: "2026-07-01T00:00:00Z",
     ...over,
@@ -71,5 +74,21 @@ describe("orderActions", () => {
     const snapshot = ids(input);
     orderActions(input, new Map());
     expect(ids(input)).toEqual(snapshot);
+  });
+});
+
+describe("positionBetween (Work queue, AQ-7)", () => {
+  it("takes the midpoint between two neighbours", () => {
+    expect(positionBetween(10, 20)).toBe(15);
+  });
+  it("drops just past the edge at the ends", () => {
+    expect(positionBetween(undefined, 20)).toBe(19); // to the top
+    expect(positionBetween(10, undefined)).toBe(11); // to the bottom
+  });
+  it("keeps a strict order after repeated midpoints", () => {
+    const a = positionBetween(0, 1); // 0.5
+    const b = positionBetween(0, a); // 0.25
+    expect(b).toBeLessThan(a);
+    expect(b).toBeGreaterThan(0);
   });
 });
