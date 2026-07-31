@@ -34,7 +34,7 @@ in a table alongside the specific observation that would earn it.
 
 ---
 
-## Where things stand (2026-07-22)
+## Where things stand (2026-07-31)
 
 Phase 0 is live at `app.chrisquinn.ie`. Capture → triage → filed, offline
 capable, installable. **Phase 1 Stages 0–3 are live on top of it**: areas are
@@ -45,30 +45,32 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 |---|---|
 | `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
 | `docs/arc-spec-phase-1.md` | **Complete — Stages 0–5 done and deployed.** Stage 6 described but not approved |
-| `docs/arc-spec-attention-queue.md` | **Built on branch `attention-queue`** (worktree `../reeve-inbox-board`). The middle of the app is now "Needs you", not the old Inbox. See its §0. Not yet merged |
+| `docs/arc-spec-attention-queue.md` | **Complete — AQ-1…AQ-6 plus the F9/F10 hardening, merged to `main`.** The middle of the app is "Needs you", not the old Inbox. See its §0 |
 | `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
-| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 was skipped and cost data — superseded by Phase 1 P1-F13. **F9, F10, F11 outstanding** |
+| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 skipped, superseded by P1-F13. **F9 and F10 done with the attention queue; F11 outstanding** |
 | `docs/arc-spec-web-push.md` | **Built and deployed.** Delivery unproven until WP-F6.3 — a notification on a real iPhone |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
-### The attention queue (branch `attention-queue`, not merged)
+### The attention queue (built and merged)
 
 The middle of the app was reconsidered mid-build: a kanban board is a workspace
 you *maintain*, so it was replaced by an **attention queue** — "Needs you" — a
-stream of decisions the AI orders and the human only judges. Built in an
-isolated worktree, all of AQ-1…AQ-6, 102 unit + 7 e2e passing. What a merging
+stream of decisions the AI orders and the human only judges. All of AQ-1…AQ-6
+plus the F9/F10 hardening are on `main`; 109 unit + 7 e2e passing. What a later
 session must know:
 
-- **Migration `0014_actions_and_archive.sql` is applied to the shared DB**, and
-  the **triage function is deployed** with the producer (an actionable capture
-  becomes a proposed action). Both were done from the branch; `main` ignores
-  the new `actions` table until merge. An earlier `0014_tasks_and_archive`
-  (from the abandoned board draft) was applied and then reverted — check
-  `pnpm db:status` before naming a migration.
-- **The Inbox tab is retired.** `Inbox.tsx` and `ReeveChangeRequests.tsx` (the
-  F11 change-request review UI) are kept in the tree but off the nav; re-homing
-  that review into "Needs you" is the flagged AQ-4 follow-up.
-- Full remaining-work picture is in `arc-spec-attention-queue.md` §0.
+- **Migration `0014_actions_and_archive.sql` is applied to the shared DB.** An
+  earlier `0014_tasks_and_archive` (from the abandoned board draft) was applied
+  and then reverted — always `pnpm db:status` before naming a migration.
+- **The triage producer is Broader** (§8 Q1, decided with Chris): the model
+  judges actionability — anything that reads as intent to do — not a commitment
+  heuristic. Redeploy the `triage` function whenever its code changes; the
+  deployed copy and the frontend must go live together.
+- **The Inbox tab is retired.** Change-request review is re-homed into "Needs
+  you"; `Inbox.tsx` and `ReeveChangeRequests.tsx` stay in the tree, unmounted,
+  and can be deleted once the re-home is proven.
+- Full picture, including the earned-later items (manual dispatch/return, F9.4
+  apply-to-cache, the B-1 device check), is in `arc-spec-attention-queue.md` §0.
 
 ### Phase 1 — what is left
 
@@ -131,22 +133,20 @@ asking at the wrong moment burns the only chance there is.
 
 ### Also outstanding — hardening P2
 
-Lower priority than Phase 1, but F10 is the one with a cost today.
-
-- **F9 Realtime resilience** — resubscribe on `visibilitychange`, handle
-  `CHANNEL_ERROR`/`TIMED_OUT`, add a `user_id` filter to the subscription,
-  apply the payload to the cache instead of invalidating, tear down when
-  backgrounded. There are now **two** channels subscribed this way, `captures`
-  and `commitments`, so the fix is worth doing once and sharing.
-- **F10 Session lifecycle** — there is no sign-out. A session in a bad state is
-  currently unrecoverable without developer tools, and the persisted query
-  cache has to be purged with it (**but not the outbox** — unsent work belongs
-  to the device, not the session). Now sharper: `areas` is owner-scoped, so
-  testing it by hand needs a second account and there is no way to switch.
-- **F11 Smaller items** — `useInfiniteQuery` pagination, code splitting (the
-  bundle is one ~628 KB chunk), document the JWT-pattern caveat in
-  `check-bundle.mjs`. The Due view fetches 200 rows the same way the Inbox
-  does, so pagination now has two call sites.
+- **F9 Realtime resilience — done** with the attention queue. One shared hook,
+  `apps/web/src/lib/useRealtimeChannel.ts`: resubscribe on `visibilitychange`,
+  `CHANNEL_ERROR`/`TIMED_OUT` backoff, a `user_id` filter, teardown when
+  backgrounded. NeedsYou and Due use it. **F9.4** (apply the payload to the
+  cache instead of invalidating) is the one part left — the callers still
+  invalidate; the refetch cost that earns it hasn't shown up on a single user.
+- **F10 Session lifecycle — done** with the attention queue. Sign-out lives in
+  the settings sheet (`components/Settings.tsx`, reached from Due); it clears the
+  query cache and draft but **never the outbox**, warns on unsent work, and
+  returns to sign-in on a dead refresh token. Password reset (F10.4) is deferred.
+- **F11 Smaller items** — **outstanding.** `useInfiniteQuery` pagination, code
+  splitting (the bundle is one ~1 MB chunk), document the JWT-pattern caveat in
+  `check-bundle.mjs`. NeedsYou, Due and Search now all fetch a capped list, so
+  pagination has three call sites.
 
 **Two things belong to Chris and should not be decided for him:**
 

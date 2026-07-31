@@ -1,7 +1,7 @@
 # Reeve: The attention queue
 
-Status: **Built — AQ-1…AQ-6 on branch `attention-queue`.** Manual dispatch/
-return only (automation is `spec.md` §9); two follow-ups flagged in §0.
+Status: **Built and finished — AQ-1…AQ-6, plus the F9/F10 hardening folded in.**
+Manual dispatch/return only (automation is `spec.md` §9).
 Owner: Chris
 Audience: implementing session picking this up cold
 Supersedes: the "Inbox → Board" draft (kanban middle layer), replaced after the
@@ -13,9 +13,11 @@ Companion to: `docs/spec.md` (§9 end-state), `docs/arc-spec-phase-1.md`
 
 ## 0. Implementation status
 
-Built in an isolated worktree on branch `attention-queue`, from `main` at
-`a3848b9`. Every factual claim in this document was checked against the code
-before it was implemented; the two corrections that needed making are below.
+Built in two passes. First, all of AQ-1…AQ-6 in an isolated worktree on branch
+`attention-queue` from `main` at `a3848b9`. Then, in a merge session
+(2026-07-31), the branch was reconciled with `main`, the gaps it flagged were
+closed against four decisions taken with Chris, and F9/F10 from the hardening
+spec were folded in. Every factual claim here was checked against the code.
 
 | | Feature | Status |
 |---|---|---|
@@ -23,20 +25,20 @@ before it was implemented; the two corrections that needed making are below.
 | P0 | **B-2** Mobile type scale | ✅ Done |
 | P1 | **AQ-1** `actions` schema + soft-delete | ✅ Done (migration `0014`) |
 | P1 | **AQ-2** The "Needs you" stream | ✅ Done — replaces the Inbox tab |
-| P1 | **AQ-3** AI-proposed order + producer | ✅ Done — triage deployed |
-| P1 | **AQ-4** The "Go" handoff | ✅ Done — reeve-routing flagged below |
+| P1 | **AQ-3** AI-proposed order + producer | ✅ Done — Broader; the model judges actionability |
+| P1 | **AQ-4** The "Go" handoff | ✅ Done — reeve routes through change requests |
 | P1 | **AQ-5** The result loop | ✅ Scaffold — manual; §9 automates |
 | P1 | **AQ-6** Search + archive | ✅ Done |
 
 ### Verified
-- 102 unit tests (incl. `actions` RLS, `orderActions`, `assembleBrief`) and 7
-  end-to-end tests pass on Chromium. The e2e capture test confirms the producer
-  end to end: a dictated thought with a commitment becomes a proposed action
+- 109 unit tests (incl. `actions` RLS, `orderActions`, `assembleBrief`, the
+  Broader schema, and the action-outbox merge) and 7 end-to-end tests pass on
+  Chromium; typecheck, lint and the secret scan are clean. The e2e capture test
+  confirms the producer end to end: a dictated thought becomes a proposed action
   visible in "Needs you".
-- `pnpm build` passes the secret scan; the bundle is smaller than the board
-  draft's (no drag library).
-- The migration is applied and the triage function is deployed to the shared
-  project (see the handoff caveats).
+- Migration `0014` is applied to the shared project; the Broader triage producer
+  is deployed with the frontend at ship time (the frontend and the queue's
+  actionability go live together).
 
 ### Three defects this spec did not predict
 1. **The producer would have blocked a filed capture.** Placed before `done`
@@ -53,24 +55,39 @@ before it was implemented; the two corrections that needed making are below.
    (whose module pulls in the supabase client) was untestable until the alias
    was added.
 
+### Finished in the merge session (2026-07-31)
+Four gaps this document flagged were closed, against decisions taken with Chris:
+- **Broader actionability (§8 Q1).** The producer no longer derives actionability
+  from a commitment; the triage model judges intent — anything to draft, send,
+  ring, fix, buy, arrange — and names an `action_title`. Leaning towards action
+  on the borderline: watch the queue for noise, not misses.
+- **Reeve actions route through the change-request pipeline (AQ-4).** A `reeve`
+  action's Go drafts a change request from its capture — draft → file → @claude →
+  PR → shipped → push — instead of a generic clipboard brief.
+- **The change-request review UI is re-homed.** Drafts and proposals awaiting
+  review surface as cards in "Needs you"; `Inbox.tsx`/`ReeveChangeRequests.tsx`
+  remain in the tree, now unmounted, and can be deleted once this is proven.
+- **Decisions are offline-durable.** Go/decline/approve/redo/pin/undo travel the
+  outbox (a new action op + `pendingActionPatch` overlay), and the `actions`
+  query now persists offline — it was missing from the allow-list. A reeve Go and
+  the manual result loop stay online by nature and say so.
+
+Folded in from `arc-spec-pwa-hardening.md`:
+- **F9** — one resilient realtime hook (`useRealtimeChannel`) shared by NeedsYou
+  and Due: re-subscribe on visibility, backoff on channel error, a `user_id`
+  filter, teardown when backgrounded.
+- **F10** — sign-out in the settings sheet: clears the query cache and draft but
+  never the outbox, warns on unsent work, returns to sign-in on a dead refresh
+  token. Password reset (F10.4) stays deferred.
+
 ### Gaps left open — earn or build these next
-- **Reeve-area actions use the generic brief, not the change-request pipeline.**
-  AQ-4 asks a `reeve` action to route through the existing change-request
-  handoff. The generic brief works for every area today; the reeve
-  specialisation is wired but deferred.
-- **Dispatch and return are manual.** The loop is complete but hand-driven —
-  Go copies a brief to the clipboard; a result is pasted back by hand. The
+- **Dispatch and return are manual.** The loop is complete but hand-driven; the
   automation is `spec.md` §9.
-- **The Inbox tab's F11 review UI lost its home.** Retiring the Inbox took
-  Developer 2's `ReeveChangeRequests` (the Phase-1 F11 change-request review UI)
-  off the nav. `Inbox.tsx` and `ReeveChangeRequests.tsx` are kept in the tree,
-  not deleted — re-homing reeve change-request review into the "Needs you"
-  stream is the natural continuation of the AQ-4 reeve-routing above.
-- **Action decisions are online-first, not offline-durable.** Unlike a capture
-  or a commitment edit, a Go/decline/approve is not queued through the outbox.
-  A follow-up if deciding with no signal turns out to matter.
-- **B-1 needs a device.** The nav-gap fix cannot be reproduced in the harness;
-  it needs the installed iPhone PWA.
+- **F9.4 — apply realtime payloads to the cache** rather than invalidating.
+  Earned when the refetch cost becomes visible on a single-user app.
+- **B-1 needs a device**, and so does WP-F6.3 (a push landing on the iPhone).
+  Neither the nav-gap fix nor real push delivery can be reproduced in the
+  harness; both need the installed iPhone PWA.
 
 ---
 
