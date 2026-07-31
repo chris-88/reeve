@@ -4,6 +4,7 @@ import type { Action, Area } from "@reeve/shared";
 import { REEVE_AREA_ID } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { assembleBrief } from "@/lib/brief";
+import { enqueueActionPatch, type ActionPatch } from "@/lib/outbox";
 
 /** The change-request review list, shared with NeedsYou and ReeveChangeRequests. */
 const CHANGE_REQUESTS_QK = ["change_requests"] as const;
@@ -13,10 +14,11 @@ const CHANGE_REQUESTS_QK = ["change_requests"] as const;
  * One place, because the card and the detail sheet trigger the same
  * transitions and must not drift.
  *
- * Online-first with an optimistic remove-from-stream and an error toast on
- * failure: a judgment, unlike a capture, is not made with no signal. (Making
- * these decisions durable offline via the outbox is a noted follow-up, the way
- * change-request review already is.)
+ * Durable via the outbox, with an optimistic remove-from-stream: a judgment,
+ * like a capture or a commitment edit, must survive being made with no signal.
+ * The two exceptions are inherently online and say so where they live — a reeve
+ * Go (a model call) and the manual result loop's mark-ready/mark-done (AQ-5,
+ * dev-only until §9 automates the return).
  */
 
 export const ACTIONS_QK = ["actions"] as const;
@@ -55,40 +57,47 @@ function removeFromStream(qc: QueryClient, id: string) {
   qc.setQueryData<Action[]>(ACTIONS_QK, (old) => old?.filter((a) => a.id !== id));
 }
 
+/** Patch an action in place in the stream cache (a pin re-orders, it stays). */
+function patchInStream(qc: QueryClient, id: string, patch: Partial<Action>) {
+  qc.setQueryData<Action[]>(ACTIONS_QK, (old) =>
+    old?.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+  );
+}
+
+/**
+ * The durable transition every stream decision shares: remove from the stream
+ * at once, then queue the write. The outbox retries until it lands, so there is
+ * no failure toast here — the departure is the acknowledgement, as with a
+ * capture. NeedsYou overlays the pending patch, so a decision survives a reload
+ * before the queue has flushed.
+ */
 async function apply(
   qc: QueryClient,
   action: Action,
-  patch: Partial<Action>,
+  patch: ActionPatch,
   { optimistic = true }: { optimistic?: boolean } = {},
-): Promise<boolean> {
+): Promise<void> {
   if (optimistic) removeFromStream(qc, action.id);
-  const { error } = await supabase.from("actions").update(patch).eq("id", action.id);
-  if (error) {
-    void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-    toast.error("Couldn't do that", { description: "Nothing changed." });
-    return false;
-  }
-  return true;
+  await enqueueActionPatch(action.id, action.user_id, patch);
 }
 
 // --- proposed → … --------------------------------------------------------
 
 /** "Just a note": the capture stays filed as reference; nothing is dispatched. */
 export async function declineAction(qc: QueryClient, action: Action): Promise<void> {
-  if (await apply(qc, action, { status: "declined", decided_at: now() })) {
-    toast("Filed as a note", {
-      action: { label: "Undo", onClick: () => void restoreToProposed(qc, action) },
-    });
-  }
+  await apply(qc, action, { status: "declined", decided_at: now() });
+  toast("Filed as a note", {
+    action: { label: "Undo", onClick: () => void restoreToProposed(qc, action) },
+  });
 }
 
 export async function restoreToProposed(qc: QueryClient, action: Action): Promise<void> {
-  const { error } = await supabase
-    .from("actions")
-    .update({ status: "proposed", decided_at: null })
-    .eq("id", action.id);
-  if (error) toast.error("Couldn't restore that");
-  else void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+  // Put it back in the stream optimistically, then queue the restore.
+  qc.setQueryData<Action[]>(ACTIONS_QK, (old) => {
+    const without = (old ?? []).filter((a) => a.id !== action.id);
+    return [...without, { ...action, status: "proposed", decided_at: null }];
+  });
+  await enqueueActionPatch(action.id, action.user_id, { status: "proposed", decided_at: null });
 }
 
 /**
@@ -100,9 +109,8 @@ export async function dispatchAction(
   action: Action,
   brief: string,
 ): Promise<void> {
-  if (await apply(qc, action, { status: "dispatched", brief, dispatched_at: now() })) {
-    toast("Sent to an agent", { description: "Brief copied to your clipboard." });
-  }
+  await apply(qc, action, { status: "dispatched", brief, dispatched_at: now() });
+  toast("Sent to an agent", { description: "Brief copied to your clipboard." });
 }
 
 /**
@@ -150,7 +158,19 @@ export async function goAction(qc: QueryClient, action: Action, area?: Area): Pr
  * for another try.
  */
 async function goReeveAction(qc: QueryClient, action: Action): Promise<void> {
-  if (!(await apply(qc, action, { status: "dispatched", dispatched_at: now() }))) return;
+  // Online by nature — the draft is a model call — so the writes are direct,
+  // not queued: a failed draft can then be reverted cleanly without a pending
+  // outbox patch racing the revert.
+  removeFromStream(qc, action.id);
+  const dispatched = await supabase
+    .from("actions")
+    .update({ status: "dispatched", dispatched_at: now() })
+    .eq("id", action.id);
+  if (dispatched.error) {
+    void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+    toast.error("Couldn't do that", { description: "Nothing changed." });
+    return;
+  }
 
   const { error } = await supabase.functions.invoke("draft-change-request", {
     body: { capture_ids: [action.capture_id] },
@@ -176,29 +196,23 @@ async function goReeveAction(qc: QueryClient, action: Action): Promise<void> {
 export async function togglePin(qc: QueryClient, action: Action): Promise<void> {
   const pinned_at = action.pinned_at ? null : now();
   // Not an optimistic remove — a pinned action stays in the stream, it just
-  // moves. Let the query re-order it.
-  const { error } = await supabase
-    .from("actions")
-    .update({ pinned_at })
-    .eq("id", action.id);
-  if (error) toast.error("Couldn't pin that");
-  else void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+  // moves. Patch it in place so it re-orders at once, then queue the write.
+  patchInStream(qc, action.id, { pinned_at });
+  await enqueueActionPatch(action.id, action.user_id, { pinned_at });
 }
 
 // --- review → … ----------------------------------------------------------
 
 /** Approve the agent's result. */
 export async function approveAction(qc: QueryClient, action: Action): Promise<void> {
-  if (await apply(qc, action, { status: "done", decided_at: now() })) {
-    toast("Approved");
-  }
+  await apply(qc, action, { status: "done", decided_at: now() });
+  toast("Approved");
 }
 
 /** Send it back for another pass. Returns to dispatched; the result is cleared. */
 export async function redoAction(qc: QueryClient, action: Action): Promise<void> {
-  if (await apply(qc, action, { status: "dispatched", result: null })) {
-    toast("Sent back for another pass");
-  }
+  await apply(qc, action, { status: "dispatched", result: null });
+  toast("Sent back for another pass");
 }
 
 // --- dispatched → … (the manual result loop; AQ-5) -----------------------

@@ -15,7 +15,13 @@ import {
 import type { Action, Area, Capture, ChangeRequest } from "@reeve/shared";
 import { NEEDS_YOU_STATUSES } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
-import { captureOps, pendingChangeRequestPatch, subscribe, type PendingOp } from "@/lib/outbox";
+import {
+  captureOps,
+  pendingActionPatch,
+  pendingChangeRequestPatch,
+  subscribe,
+  type PendingOp,
+} from "@/lib/outbox";
 import {
   ACTIONS_QK,
   DISPATCHED_QK,
@@ -166,7 +172,20 @@ export default function NeedsYou({ userId }: { userId: string }) {
     return () => void supabase.removeChannel(channel);
   }, [qc]);
 
-  const ordered = useMemo(() => orderActions(actions, dueByCapture), [actions, dueByCapture]);
+  // Overlay any pending outbox decision, so an action decided with no signal
+  // stays out of the stream even if the query refetches before the queue
+  // flushes (AQ-2 offline durability).
+  const visibleActions = useMemo(
+    () =>
+      actions
+        .map((a) => ({ ...a, ...pendingActionPatch(pending, a.id) }) as Action)
+        .filter((a) => !a.archived_at && NEEDS_YOU_STATUSES.includes(a.status)),
+    [actions, pending],
+  );
+  const ordered = useMemo(
+    () => orderActions(visibleActions, dueByCapture),
+    [visibleActions, dueByCapture],
+  );
   const caughtUp =
     ordered.length === 0 &&
     inflight.length === 0 &&
