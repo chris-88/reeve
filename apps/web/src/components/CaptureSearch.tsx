@@ -4,18 +4,21 @@ import { toast } from "sonner";
 import { Archive, ArchiveRestore, Search, X } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import CaptureDetail from "@/components/CaptureDetail";
 
 /**
- * AQ-6: where the old log lives.
+ * AQ-8: the Library — see everything you've captured.
  *
- * Once the chronological Inbox is retired, "everything I ever captured" needs a
- * home or archiving reads as deletion. This is that home — a search over title
- * and raw text, reverse-chronological — and it is where a note is **archived**.
+ * Browse-first: open it and you are looking at the whole pile, newest first;
+ * typing narrows. This is the home the retired Inbox's history job needed, and
+ * — because a capture with no commitment never reaches "Needs you" — the only
+ * place a plain note is visible after it is written.
  *
- * Archived captures are hidden from the default list (browsing) but included
- * the moment you search a term (finding), so archiving hides without losing.
- * Off the primary nav, reached from the Needs-you header.
+ * It is for looking and recall and offers no decide/act control — the rule that
+ * keeps it a library, not a second queue. Archiving lives here (a note's only
+ * removal); archived captures are tucked away while browsing and shown on the
+ * toggle, or whenever a search matches one.
  */
 export default function CaptureSearch({
   areas,
@@ -26,32 +29,49 @@ export default function CaptureSearch({
 }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [areaFilter, setAreaFilter] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState<Capture | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
   const term = q.trim();
 
-  // Opened by a tap, so a gesture already happened — focusing the field is what
-  // the user is here to do. (A ref, not autoFocus, which the a11y lint refuses.)
   useEffect(() => inputRef.current?.focus(), []);
 
   const { data: results = [], isFetching } = useQuery({
-    queryKey: ["capture-search", term],
+    queryKey: ["capture-search", term, showArchived],
     queryFn: async (): Promise<Capture[]> => {
       let query = supabase
         .from("captures")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
-      // Browsing hides archived; searching a term includes it, so an archived
-      // capture is hidden but still findable.
+      // Browsing hides archived unless asked; a search always includes them, so
+      // an archived capture is out of the way but never lost.
       if (term) query = query.or(`title.ilike.%${term}%,raw_text.ilike.%${term}%`);
-      else query = query.is("archived_at", null);
+      else if (!showArchived) query = query.is("archived_at", null);
       const { data, error } = await query;
       if (error) throw error;
       return data;
     },
   });
+
+  const visible = useMemo(
+    () =>
+      areaFilter
+        ? results.filter((c) => (c.corrected_area_id ?? c.area_id) === areaFilter)
+        : results,
+    [results, areaFilter],
+  );
+
+  const used = useMemo(() => {
+    const present = new Set<string>();
+    for (const c of results) {
+      const id = c.corrected_area_id ?? c.area_id;
+      if (id) present.add(id);
+    }
+    return areas.filter((a) => present.has(a.id));
+  }, [areas, results]);
 
   async function setArchived(c: Capture, archived: boolean) {
     const archived_at = archived ? new Date().toISOString() : null;
@@ -77,7 +97,7 @@ export default function CaptureSearch({
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search everything you've captured"
+            placeholder="Search your library"
             aria-label="Search captures"
             className="placeholder:text-muted-dim min-w-0 flex-1 bg-transparent text-base outline-none"
           />
@@ -85,22 +105,44 @@ export default function CaptureSearch({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close search"
+          aria-label="Close"
           className="text-muted-foreground hover:text-foreground p-2"
         >
           <X className="size-5" aria-hidden />
         </button>
       </header>
 
+      {(used.length > 0 || !term) && (
+        <div className="scrollbar-none flex shrink-0 gap-2 overflow-x-auto px-4 pb-3">
+          <Chip active={areaFilter === null} onClick={() => setAreaFilter(null)} label="All" />
+          {used.map((a) => (
+            <Chip
+              key={a.id}
+              active={areaFilter === a.id}
+              onClick={() => setAreaFilter(areaFilter === a.id ? null : a.id)}
+              label={a.label}
+              colour={a.colour}
+            />
+          ))}
+          {!term && (
+            <Chip
+              active={showArchived}
+              onClick={() => setShowArchived((s) => !s)}
+              label={showArchived ? "Hide archived" : "Show archived"}
+            />
+          )}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
-        {results.length === 0 && !isFetching && (
+        {visible.length === 0 && !isFetching && (
           <p className="text-muted-foreground px-2 py-16 text-center text-sm">
             {term ? "No captures match that." : "Nothing captured yet."}
           </p>
         )}
 
         <ul>
-          {results.map((c) => {
+          {visible.map((c) => {
             const area = areaById.get(c.corrected_area_id ?? c.area_id ?? "");
             const archived = c.archived_at != null;
             return (
@@ -135,7 +177,9 @@ export default function CaptureSearch({
                 </button>
                 <button
                   type="button"
-                  aria-label={archived ? `Restore "${c.title ?? c.raw_text}"` : `Archive "${c.title ?? c.raw_text}"`}
+                  aria-label={
+                    archived ? `Restore "${c.title ?? c.raw_text}"` : `Archive "${c.title ?? c.raw_text}"`
+                  }
                   title={archived ? "Restore" : "Archive"}
                   onClick={() => void setArchived(c, !archived)}
                   className="text-muted-dim hover:text-foreground hover:bg-card/60 ml-1 shrink-0 rounded-lg p-2 transition-colors"
@@ -156,5 +200,34 @@ export default function CaptureSearch({
         <CaptureDetail capture={open} areas={areas} onClose={() => setOpen(null)} onCorrected={onClose} />
       )}
     </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  label,
+  colour,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  colour?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+        active
+          ? "border-foreground/30 bg-secondary text-foreground"
+          : "border-border/60 text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {colour && <span aria-hidden className="size-2 rounded-full" style={{ background: colour }} />}
+      {label}
+    </button>
   );
 }

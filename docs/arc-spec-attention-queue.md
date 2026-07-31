@@ -601,9 +601,12 @@ act** — the one rule that keeps it a library, not a second queue.
 - **P1-F8.2** Filterable by area, like the old Inbox chips. Archived are tucked
   away by default and shown on a toggle (and, as today, when a search matches
   one). Archiving still lives here (AQ-6).
-- **P1-F8.3** Reached from a header icon (present on Write and Needs you), not a
-  tab — the tab budget is spent on Work, and browsing is a pull, not a
-  destination you live in. Revisit only if it proves too buried.
+- **P1-F8.3** Reached from a header icon, not a tab — the tab budget is spent on
+  Work, and browsing is a pull, not a destination you live in. The icon lives on
+  the non-capture surfaces (**Needs you** and **Work**); **not** on the capture
+  screen, whose governing rule is that nothing on it may fail to help capture.
+  (This corrects the draft, which said "Write and Needs you" before that tension
+  was weighed.) Revisit placement only if it proves too buried.
 
 **Acceptance.** Opening the Library shows everything without typing; area filter
 and archived toggle work; any capture — a plain note with no action, an archived
