@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, ListChecks, PenLine } from "lucide-react";
+import { Bell, ListChecks, PenLine, SquareKanban } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
@@ -13,17 +13,20 @@ import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
 import Due from "@/screens/Due";
 import NeedsYou from "@/screens/NeedsYou";
+import Work from "@/screens/Work";
 
-type Screen = "capture" | "needs-you" | "due";
+type Screen = "capture" | "needs-you" | "work" | "due";
 
 /**
- * Write, then decide, then owe. The middle is "Needs you" — the attention queue
- * where Reeve surfaces what wants a judgment. Due is the time lens beside it.
- * The old chronological Inbox is retired; its history moved to Search.
+ * Write, then decide, then direct, then owe. "Needs you" surfaces what wants
+ * your judgment; "Work" (AQ-7) is where you see what your assistants are doing
+ * and order what they pick up next; Due is the time lens. The old chronological
+ * Inbox is retired; its history is the Library.
  */
 const NAV = [
   { id: "capture", label: "Write", Icon: PenLine },
   { id: "needs-you", label: "Needs you", Icon: Bell },
+  { id: "work", label: "Work", Icon: SquareKanban },
   { id: "due", label: "Due", Icon: ListChecks },
 ] as const;
 
@@ -97,6 +100,7 @@ export default function App() {
       <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" && <Capture userId={session.user.id} />}
         {screen === "needs-you" && <NeedsYou />}
+        {screen === "work" && <Work />}
         {screen === "due" && <Due userId={session.user.id} />}
       </main>
 

@@ -131,6 +131,7 @@ export type Capture = z.infer<typeof Capture>;
 export const ACTION_STATUSES = [
   "proposed",
   "dispatched",
+  "working",
   "review",
   "done",
   "declined",
@@ -140,6 +141,9 @@ export type ActionStatus = z.infer<typeof ActionStatus>;
 
 /** The two states that need a human — the "Needs you" stream (AQ-2). */
 export const NEEDS_YOU_STATUSES: readonly ActionStatus[] = ["proposed", "review"];
+
+/** The three lanes of the Work board (AQ-7), in order. */
+export const WORK_STATUSES: readonly ActionStatus[] = ["dispatched", "working", "done"];
 
 /**
  * An action Reeve proposes to take on a capture's behalf (AQ-1), carried
@@ -160,6 +164,10 @@ export const Action = z.object({
   dispatched_at: z.string().nullable(),
   decided_at: z.string().nullable(),
   archived_at: z.string().nullable(),
+  /** Work board (AQ-7). Order within the Queued lane; the assistant on it; when started. */
+  queue_position: z.number().nullable(),
+  assignee: z.string().nullable(),
+  started_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });

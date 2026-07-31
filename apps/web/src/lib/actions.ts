@@ -16,6 +16,25 @@ import { assembleBrief } from "@/lib/brief";
  */
 
 export const ACTIONS_QK = ["actions"] as const;
+/** The Work board's three lanes (AQ-7): dispatched / working / done. */
+export const WORK_QK = ["work-actions"] as const;
+
+/** End of the Queued lane. Monotonic, so a new dispatch needs no read. */
+export function endOfQueue(): number {
+  return Date.now();
+}
+
+/**
+ * The queue_position for a card dropped between two others (AQ-7). Midpoint
+ * when both exist, just past the edge otherwise. Pure but for the empty-lane
+ * fallback; the three real cases are unit-tested.
+ */
+export function positionBetween(before: number | undefined, after: number | undefined): number {
+  if (before != null && after != null) return (before + after) / 2;
+  if (after != null) return after - 1;
+  if (before != null) return before + 1;
+  return endOfQueue();
+}
 
 /**
  * AQ-3: the proposed order. Pinned first (most recent pin leads), then by the
@@ -96,7 +115,16 @@ export async function dispatchAction(
   action: Action,
   brief: string,
 ): Promise<void> {
-  if (await apply(qc, action, { status: "dispatched", brief, dispatched_at: now() })) {
+  // queue_position lands it at the end of the Queued lane on the Work board.
+  if (
+    await apply(qc, action, {
+      status: "dispatched",
+      brief,
+      dispatched_at: now(),
+      queue_position: endOfQueue(),
+    })
+  ) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
     toast("Sent to an agent", { description: "Brief copied to your clipboard." });
   }
 }
@@ -148,29 +176,95 @@ export async function togglePin(qc: QueryClient, action: Action): Promise<void> 
 
 // --- review → … ----------------------------------------------------------
 
-/** Approve the agent's result. */
+/** Approve the agent's result. Lands in the Work board's Done lane. */
 export async function approveAction(qc: QueryClient, action: Action): Promise<void> {
   if (await apply(qc, action, { status: "done", decided_at: now() })) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
     toast("Approved");
   }
 }
 
-/** Send it back for another pass. Returns to dispatched; the result is cleared. */
+/** Send it back for another pass. Returns to the Queued lane; result cleared. */
 export async function redoAction(qc: QueryClient, action: Action): Promise<void> {
-  if (await apply(qc, action, { status: "dispatched", result: null })) {
+  if (
+    await apply(qc, action, {
+      status: "dispatched",
+      result: null,
+      assignee: null,
+      started_at: null,
+      queue_position: endOfQueue(),
+    })
+  ) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
     toast("Sent back for another pass");
   }
 }
 
-// --- dispatched → … (the manual result loop; AQ-5) -----------------------
+// --- the Work board (AQ-7) -----------------------------------------------
 //
-// Until real agents return work automatically (spec.md §9), Chris drives the
-// return by hand: a dispatched action either comes back for approval or is
-// simply marked done.
+// Reorder the Queued lane, pick a card up (assign an assistant), and complete
+// it. All manual for v1; spec.md §9's real agents populate the assistant and
+// drive these transitions themselves later.
 
-export const DISPATCHED_QK = ["dispatched-actions"] as const;
+/** Drag within Queued: write the new order. Optimistic against the board cache. */
+export async function reorderQueued(
+  qc: QueryClient,
+  action: Action,
+  queue_position: number,
+): Promise<void> {
+  qc.setQueryData<Action[]>(WORK_QK, (old) =>
+    old?.map((a) => (a.id === action.id ? { ...a, queue_position } : a)),
+  );
+  const { error } = await supabase
+    .from("actions")
+    .update({ queue_position })
+    .eq("id", action.id);
+  if (error) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
+    toast.error("Couldn't reorder that");
+  }
+}
 
-/** An agent handed something back: enter the stream as an Approve/Redo decision. */
+/** Pick a card up: move it to Working and record who is on it. */
+export async function startWorking(
+  qc: QueryClient,
+  action: Action,
+  assignee: string,
+): Promise<void> {
+  const patch = { status: "working" as const, assignee: assignee.trim() || null, started_at: now() };
+  qc.setQueryData<Action[]>(WORK_QK, (old) =>
+    old?.map((a) => (a.id === action.id ? { ...a, ...patch } : a)),
+  );
+  const { error } = await supabase.from("actions").update(patch).eq("id", action.id);
+  if (error) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
+    toast.error("Couldn't start that");
+    return;
+  }
+  toast("Working", assignee.trim() ? { description: `With ${assignee.trim()}` } : undefined);
+}
+
+/** Change who a working card is assigned to. */
+export async function assignAction(
+  qc: QueryClient,
+  action: Action,
+  assignee: string,
+): Promise<void> {
+  const value = assignee.trim() || null;
+  qc.setQueryData<Action[]>(WORK_QK, (old) =>
+    old?.map((a) => (a.id === action.id ? { ...a, assignee: value } : a)),
+  );
+  const { error } = await supabase.from("actions").update({ assignee: value }).eq("id", action.id);
+  if (error) {
+    void qc.invalidateQueries({ queryKey: WORK_QK });
+    toast.error("Couldn't reassign that");
+  }
+}
+
+// The manual result loop (AQ-5): until real agents return work, Chris drives
+// the return — a working card either comes back for approval or is marked done.
+
+/** An agent handed something back: re-enter "Needs you" as an Approve/Redo. */
 export async function markResultReady(
   qc: QueryClient,
   action: Action,
@@ -185,11 +279,11 @@ export async function markResultReady(
     return;
   }
   void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-  void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+  void qc.invalidateQueries({ queryKey: WORK_QK });
   toast("Saved for review");
 }
 
-/** Done without a review step. */
+/** Done without a review step. Stays on the board, in Done. */
 export async function markDone(qc: QueryClient, action: Action): Promise<void> {
   const { error } = await supabase
     .from("actions")
@@ -199,6 +293,6 @@ export async function markDone(qc: QueryClient, action: Action): Promise<void> {
     toast.error("Couldn't do that");
     return;
   }
-  void qc.invalidateQueries({ queryKey: DISPATCHED_QK });
+  void qc.invalidateQueries({ queryKey: WORK_QK });
   toast("Marked done");
 }
