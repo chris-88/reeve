@@ -5,7 +5,14 @@ import path from "node:path";
 
 export default defineConfig({
   // The app uses the `@/` alias; a test importing an app module needs it too.
-  resolve: { alias: { "@": path.resolve(import.meta.dirname, "apps/web/src") } },
+  // `@reeve/shared` is aliased for the same reason: it is a workspace link, so
+  // it resolves from apps/web but not from the root, where these tests live.
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "apps/web/src"),
+      "@reeve/shared": path.resolve(import.meta.dirname, "packages/shared/src/index.ts"),
+    },
+  },
   test: {
     include: ["tests/**/*.test.ts"],
     // These hit the real Supabase project. They are slow and they are the only

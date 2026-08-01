@@ -133,6 +133,15 @@ export const Capture = z.object({
   corrected_at: z.string().nullable(),
   /** Soft-delete (AQ-1). Set when archived from Search; never hard-deleted. */
   archived_at: z.string().nullable(),
+  /**
+   * The attached screenshot: an object key in the `capture-images` bucket, and
+   * the two facts about the bytes worth keeping on the row. All three are null
+   * together or set together — a check constraint says so — so a non-null
+   * `image_path` is enough to know there is an image to show.
+   */
+  image_path: z.string().nullable(),
+  image_mime: z.string().nullable(),
+  image_bytes: z.number().int().nullable(),
 });
 export type Capture = z.infer<typeof Capture>;
 

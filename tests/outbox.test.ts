@@ -9,14 +9,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Result = { error: { code?: string; message: string } | null };
 
-const insert = vi.fn<() => Promise<Result>>();
+const insert = vi.fn<(row?: unknown) => Promise<Result>>();
 const patch = vi.fn<() => Promise<Result>>();
 const invoke = vi.fn(async () => ({ data: null, error: null }));
+/** (bucket, path, blob, options) — the storage call an attached image makes. */
+const upload = vi.fn<(...args: unknown[]) => Promise<Result>>();
 
 vi.mock("../apps/web/src/lib/supabase", () => ({
   supabase: {
+    storage: {
+      from: (bucket: string) => ({
+        upload: (path: string, blob: unknown, options: unknown) =>
+          upload(bucket, path, blob, options),
+      }),
+    },
     from: (table: string) => ({
-      insert: () => ({ abortSignal: () => insert() }),
+      insert: (row: unknown) => ({ abortSignal: () => insert(row) }),
       update: () => ({ eq: () => ({ eq: () => ({ abortSignal: () => patch() }) }) }),
       select: () => ({
         eq: () => ({
@@ -48,6 +56,8 @@ beforeEach(async () => {
   patch.mockResolvedValue({ error: null });
   invoke.mockReset();
   invoke.mockResolvedValue({ data: null, error: null });
+  upload.mockReset();
+  upload.mockResolvedValue({ error: null });
 });
 
 describe("enqueue", () => {
@@ -239,6 +249,88 @@ describe("commitment ops", () => {
     await enqueue("a thought", USER);
     await OUTBOX.enqueueCommitmentPatch(COMMITMENT, USER, { status: "done" });
     expect(captureOps(await peek())).toHaveLength(1);
+  });
+});
+
+describe("an attached image", () => {
+  const image = () => ({
+    blob: new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+    mime: "image/png" as const,
+    bytes: 3,
+  });
+
+  it("is uploaded before the row is inserted", async () => {
+    // Order, not merely both: a row whose image_path points at bytes that are
+    // not there renders as a broken attachment, which the user cannot tell
+    // apart from having lost the screenshot.
+    const order: string[] = [];
+    upload.mockImplementation(async () => {
+      order.push("upload");
+      return { error: null };
+    });
+    insert.mockImplementation(async () => {
+      order.push("insert");
+      return { error: null };
+    });
+
+    await enqueue("look at this", USER, image());
+    await flush();
+    expect(order).toEqual(["upload", "insert"]);
+  });
+
+  it("puts the object in the owner's folder, named after the capture", async () => {
+    insert.mockResolvedValue({ error: null });
+    const item = await enqueue("look at this", USER, image());
+    await flush();
+
+    const [bucket, path, , options] = upload.mock.calls[0]!;
+    expect(bucket).toBe("capture-images");
+    expect(path).toBe(`${USER}/${item.id}.png`);
+    // Upsert, because the key is derived: a retry after a lost response must
+    // overwrite the same object rather than fail on "already exists".
+    expect(options).toMatchObject({ upsert: true, contentType: "image/png" });
+  });
+
+  it("points the row at what it uploaded", async () => {
+    insert.mockResolvedValue({ error: null });
+    const item = await enqueue("look at this", USER, image());
+    await flush();
+    expect(insert.mock.calls[0]![0]).toMatchObject({
+      image_path: `${USER}/${item.id}.png`,
+      image_mime: "image/png",
+      image_bytes: 3,
+    });
+  });
+
+  it("keeps the whole capture queued when the upload fails", async () => {
+    // The text must not land without the picture: a capture that syncs half of
+    // itself has silently dropped the context it was written for.
+    upload.mockResolvedValue({ error: { message: "storage unreachable" } });
+    insert.mockResolvedValue({ error: null });
+    await enqueue("look at this", USER, image());
+    await flush();
+
+    expect(insert).not.toHaveBeenCalled();
+    const [queued] = await peek();
+    expect(queued).toBeDefined();
+    expect(queued!.op.kind === "capture" && queued!.op.image).toBeTruthy();
+  });
+
+  it("leaves a capture without one alone", async () => {
+    // Not merely "no upload": the row must not name the image columns at all.
+    // A bundle carrying this feature has to keep working against a database
+    // where 0016 has not been applied, and naming a column that does not exist
+    // is a PostgREST error that would strand every text capture.
+    insert.mockResolvedValue({ error: null });
+    await enqueue("just words", USER);
+    await flush();
+    expect(upload).not.toHaveBeenCalled();
+    expect(Object.keys(insert.mock.calls[0]![0] as object)).toEqual([
+      "id",
+      "user_id",
+      "raw_text",
+      "created_at",
+    ]);
   });
 });
 

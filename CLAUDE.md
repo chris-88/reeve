@@ -49,6 +49,7 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 | `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
 | `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 skipped, superseded by P1-F13. **F9 and F10 done with the attention queue; F11 outstanding** |
 | `docs/arc-spec-web-push.md` | **Built, deployed, and proven** — WP-F6.3 (a push on the iPhone) confirmed 2026-07-31 |
+| `docs/arc-spec-capture-images.md` | Issue #12, a screenshot attached to a capture. **Code built; `0016` not yet applied and nothing deployed.** See its §0 |
 | `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
 
 ### The attention queue (built and merged)
@@ -74,6 +75,21 @@ know:
 - **A flagged product call:** a `reeve` action's Go drafts a change request and
   marks the action `done` (off the Work board); revisit if it should stay on the
   board. See `arc-spec-attention-queue.md` §0.
+
+### Capture images (issue #12) — built, not applied
+
+A capture can carry one screenshot. `docs/arc-spec-capture-images.md` §0 has the
+whole picture; the two things that will bite otherwise:
+
+- **`0016_capture_images.sql` is written and not applied.** It adds three
+  columns to `captures`, creates the private `capture-images` bucket and three
+  owner-scoped policies on `storage.objects`. Run `pnpm db:status` first — the
+  number was free when it was written, not necessarily when you read this.
+- **The insert names the image columns only when there is an image**, so the
+  bundle is safe to ship ahead of the migration: ordinary captures are
+  unaffected and only attaching fails. That is why CI is green without a bucket
+  — and also why **nothing in CI covers the storage policies**. Attach a
+  screenshot by hand after applying it.
 
 ### Phase 1 — what is left
 

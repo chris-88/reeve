@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ResponsiveSheet from "@/components/ResponsiveSheet";
 import { Separator } from "@/components/ui/separator";
+import { SIGNED_URL_TTL_SECONDS, signedCaptureImageUrl } from "@/lib/captureImage";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,24 @@ export default function CaptureDetail({
     },
   });
 
+  /**
+   * The attached screenshot, behind a signed URL.
+   *
+   * The bucket is private, so the URL is minted per view and expires. It is
+   * deliberately not in `shouldPersistQuery` — a URL written to disk today and
+   * restored tomorrow is a guaranteed broken image, which reads as a lost
+   * attachment. Halving the TTL for the in-memory cache keeps a long-open
+   * session from reaching for one that has already expired.
+   */
+  const imagePath = capture.image_path;
+  const { data: imageUrl, isError: imageFailed } = useQuery({
+    queryKey: ["capture-image", capture.id, imagePath],
+    enabled: imagePath != null,
+    queryFn: () => signedCaptureImageUrl(imagePath as string),
+    staleTime: (SIGNED_URL_TTL_SECONDS / 2) * 1000,
+    gcTime: (SIGNED_URL_TTL_SECONDS / 2) * 1000,
+  });
+
   const entities = capture.entities;
   const populated = entities
     ? ENTITY_ORDER.filter((k) => entities[k]?.length).map((k) => [k, entities[k]] as const)
@@ -110,6 +129,34 @@ export default function CaptureDetail({
     <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-6 py-6">
           {capture.summary && (
             <p className="font-serif text-[1.15rem] leading-relaxed">{capture.summary}</p>
+          )}
+
+          {imagePath && (
+            <div>
+              <h3 className="text-muted-dim text-[0.7rem] font-semibold tracking-widest uppercase">
+                Attached
+              </h3>
+              <div className="border-border/60 bg-card mt-2 overflow-hidden rounded-xl border">
+                {imageUrl ? (
+                  // Opening in a tab is the whole-image affordance: a sheet is
+                  // narrow, and a screenshot of a document is unreadable at
+                  // sheet width on a phone.
+                  <a href={imageUrl} target="_blank" rel="noreferrer" className="block">
+                    <img
+                      src={imageUrl}
+                      alt={`Attached to ${capture.title ?? "this capture"}`}
+                      className="max-h-[55vh] w-full object-contain"
+                    />
+                  </a>
+                ) : (
+                  <p className="text-muted-foreground p-4 text-sm">
+                    {imageFailed
+                      ? "Couldn't load the image just now. It is still stored — try again when you have signal."
+                      : "Loading the image…"}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
           {capture.status === "failed" && (

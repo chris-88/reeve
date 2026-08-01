@@ -1,5 +1,11 @@
 import { del, get, update } from "idb-keyval";
-import type { ActionStatus, CommitmentStatus } from "@reeve/shared";
+import {
+  CAPTURE_IMAGE_BUCKET,
+  captureImagePath,
+  type ActionStatus,
+  type CaptureImageMime,
+  type CommitmentStatus,
+} from "@reeve/shared";
 import { supabase } from "./supabase";
 import { report, trail } from "./observability";
 
@@ -46,10 +52,35 @@ const REQUEST_TIMEOUT_MS = 15_000;
 /** If a flush somehow outlives this, the latch is forced open. */
 const FLUSH_CEILING_MS = 90_000;
 
+/**
+ * An upload gets longer than a PostgREST call, and its own timeout.
+ *
+ * 8 MB over a bad connection is minutes, not seconds, so REQUEST_TIMEOUT_MS
+ * would abandon uploads that were going to succeed. It still needs a ceiling:
+ * supabase-js's storage client takes no abort signal, so without this race a
+ * stalled upload holds the flush latch until FLUSH_CEILING_MS forces it.
+ */
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * The screenshot attached to a capture.
+ *
+ * The bytes themselves are carried here, not a reference to them. IndexedDB
+ * structured-clones a Blob, so the attachment is exactly as durable as the
+ * text it belongs to — which is the whole point: a capture written in a lift
+ * must not lose half of itself on the way out.
+ */
+export type CaptureImage = {
+  blob: Blob;
+  mime: CaptureImageMime;
+  bytes: number;
+};
+
 export type CaptureOp = {
   kind: "capture";
   raw_text: string;
   created_at: string;
+  image?: CaptureImage;
 };
 
 /**
@@ -278,18 +309,33 @@ export function backoffFor(attempts: number): number {
   return Math.round(base * (0.75 + Math.random() * 0.5));
 }
 
-/** Queue a capture. Resolves once it is durable locally, not when it syncs. */
-export async function enqueue(rawText: string, userId: string): Promise<PendingOp> {
+/**
+ * Queue a capture. Resolves once it is durable locally, not when it syncs.
+ *
+ * An image travels with it rather than being uploaded first: uploading first
+ * would put the network on the path between the user tapping Capture and the
+ * field clearing, which is the one thing this queue exists to avoid.
+ */
+export async function enqueue(
+  rawText: string,
+  userId: string,
+  image?: CaptureImage,
+): Promise<PendingOp> {
   const item: PendingOp = {
     id: crypto.randomUUID(),
     userId,
     attempts: 0,
     nextAttemptAt: 0,
     deadLettered: false,
-    op: { kind: "capture", raw_text: rawText.trim(), created_at: new Date().toISOString() },
+    op: {
+      kind: "capture",
+      raw_text: rawText.trim(),
+      created_at: new Date().toISOString(),
+      ...(image ? { image } : {}),
+    },
   };
   await mutate((items) => [item, ...items]);
-  trail("capture enqueued", { id: item.id });
+  trail("capture enqueued", { id: item.id, image: image ? image.bytes : 0 });
   void flush();
   return item;
 }
@@ -480,18 +526,67 @@ export function flush(): Promise<void> {
   return inFlight;
 }
 
+/**
+ * Put a capture's image in the bucket. null on success, a message on failure.
+ *
+ * Called before the row is inserted, never after: a row whose `image_path`
+ * points at bytes that are not there renders as a broken attachment, and the
+ * user cannot tell that apart from having lost the screenshot. Failing here
+ * instead leaves the whole capture queued and retried, image included.
+ */
+async function upload(
+  userId: string,
+  captureId: string,
+  image: CaptureImage,
+): Promise<string | null> {
+  const path = captureImagePath(userId, captureId, image.mime);
+  try {
+    const { error } = await Promise.race([
+      supabase.storage.from(CAPTURE_IMAGE_BUCKET).upload(path, image.blob, {
+        contentType: image.mime,
+        // The key is a pure function of the capture's id, so a retry after a
+        // lost response overwrites the same object rather than orphaning a
+        // second copy. Without this the retry fails on "already exists" and
+        // the capture dead-letters with its text still unsent.
+        upsert: true,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("image upload timed out")), UPLOAD_TIMEOUT_MS),
+      ),
+    ]);
+    return error ? error.message : null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
 /** null on success; a message on failure. */
 async function send(item: PendingOp): Promise<string | null> {
   if (item.op.kind === "capture") {
-    const { error } = await supabase
-      .from("captures")
-      .insert({
-        id: item.id,
-        user_id: item.userId,
-        raw_text: item.op.raw_text,
-        created_at: item.op.created_at,
-      })
-      .abortSignal(timeout());
+    const image = item.op.image;
+    if (image) {
+      const failure = await upload(item.userId, item.id, image);
+      if (failure !== null) return failure;
+    }
+
+    // The image columns are named only when there is an image, so a text
+    // capture's insert is byte-for-byte the one that shipped before 0016. That
+    // is what lets a bundle carrying this feature run against a database where
+    // the migration has not been applied yet: everything still works except
+    // attaching, which is the part that was new anyway.
+    const row: Record<string, unknown> = {
+      id: item.id,
+      user_id: item.userId,
+      raw_text: item.op.raw_text,
+      created_at: item.op.created_at,
+    };
+    if (image) {
+      row.image_path = captureImagePath(item.userId, item.id, image.mime);
+      row.image_mime = image.mime;
+      row.image_bytes = image.bytes;
+    }
+
+    const { error } = await supabase.from("captures").insert(row).abortSignal(timeout());
 
     // 23505 is a unique violation: this row already landed on an earlier
     // attempt whose response we never saw. That is success, not failure.

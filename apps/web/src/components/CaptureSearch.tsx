@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, ImageIcon, Search, X } from "lucide-react";
 import type { Area, Capture } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -162,6 +162,17 @@ export default function CaptureSearch({
                       <span className="line-clamp-2 min-w-0 flex-1 font-serif text-[1.05rem]">
                         {c.title ?? c.raw_text}
                       </span>
+                      {/*
+                        The one thing a text list cannot show. Without it a
+                        screenshot is invisible until the capture is opened,
+                        which makes it unfindable rather than merely unseen.
+                      */}
+                      {c.image_path && (
+                        <span className="text-muted-dim shrink-0 self-center">
+                          <ImageIcon className="size-3.5" aria-hidden />
+                          <span className="sr-only">Has an attached image</span>
+                        </span>
+                      )}
                       {archived && (
                         <span className="text-muted-dim shrink-0 text-[0.7rem] tracking-wide uppercase">
                           Archived
