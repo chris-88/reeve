@@ -72,6 +72,20 @@ const PATTERNS = [
   [/\bgho_[A-Za-z0-9]{20,}/, "GitHub OAuth token"],
 ];
 
+// The self-hosted stack (2026-11-02) issues a legacy JWT as its anon key, which the JWT pattern
+// above would flag. Allow exactly one JWT: the configured VITE_SUPABASE_ANON_KEY, and only when
+// its payload says role=anon. A service_role JWT, or any JWT that is not the configured key,
+// is still a finding.
+function isPublicAnonKey(token) {
+  if (token !== process.env.VITE_SUPABASE_ANON_KEY) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+    return payload.role === "anon";
+  } catch {
+    return false;
+  }
+}
+
 async function* walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
@@ -107,8 +121,11 @@ for await (const file of walk(DIST)) {
     }
   }
   for (const [pattern, label] of PATTERNS) {
-    const m = content.match(pattern);
-    if (m) findings.push(`${rel}: looks like a ${label} (${m[0].slice(0, 12)}…)`);
+    for (const m of content.matchAll(new RegExp(pattern.source, "g"))) {
+      if (label.startsWith("JWT") && isPublicAnonKey(m[0])) continue;
+      findings.push(`${rel}: looks like a ${label} (${m[0].slice(0, 12)}…)`);
+      break;
+    }
   }
 }
 
