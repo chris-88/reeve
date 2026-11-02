@@ -149,6 +149,9 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body: payload.body?.trim() || undefined,
       tag: payload.tag,
+      // PN-5.1: a second result for the same action replaces the first
+      // notification and still makes a sound. Ignored where unsupported.
+      ...(payload.tag ? { renotify: true } : {}),
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       data: { url: payload.url ?? "/" },
@@ -179,9 +182,10 @@ self.addEventListener("notificationclick", (event) => {
       for (const client of clients) {
         if (new URL(client.url).origin !== target.origin) continue;
         await client.focus();
-        if ("navigate" in client && client.url !== target.href) {
-          await client.navigate(target.href).catch(() => {});
-        }
+        // PN-1.4: hand the address over and let the page move itself. A
+        // `client.navigate()` here reloaded the app under an open outbox;
+        // hash routing needs no reload.
+        client.postMessage({ type: "NAVIGATE", url: target.href });
         return;
       }
       await self.clients.openWindow(target.href);

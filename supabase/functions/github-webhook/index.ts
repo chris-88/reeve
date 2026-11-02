@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import {
+  NEEDS_YOU_PATH,
   referencedIssues,
   reportToSentry,
   verifyGithubSignature,
@@ -157,7 +158,7 @@ async function notifyShipped(
         user_id: cr.user_id,
         // The title is what Chris's own change request was called — his words,
         // not a capture's. Per WP-F3.4, naming the shipped thing is the point.
-        notification: { title: "Shipped", body: cr.title, url: "/", tag: `cr-${cr.id}` },
+        notification: { title: "Shipped", body: cr.title, url: NEEDS_YOU_PATH, tag: `cr-${cr.id}` },
       }),
       signal: AbortSignal.timeout(15_000),
     });

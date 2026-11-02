@@ -1,4 +1,28 @@
-export type Pusher = (userId: string, n: { title: string; body?: string; url?: string; tag?: string }) => Promise<void>;
+export type Notification = { title: string; body?: string; url?: string; tag?: string };
+export type Pusher = (userId: string, n: Notification) => Promise<void>;
+
+/**
+ * PN-1.3 / PN-5.1: the address and tag the web app reads. Spelled here rather
+ * than imported because the worker takes only types from @reeve/shared (see
+ * db.ts); tests/bridge.test.ts asserts these match the shared definitions.
+ */
+export const actionPath = (actionId: string) => `/#/needs-you/${actionId}`;
+export const actionTag = (actionId: string) => `action:${actionId}`;
+export const WORK_PATH = "/#/work";
+
+/**
+ * BR-3.4 / PN-1.3: what the phone shows when a run comes back. The title is the
+ * action's (Chris's words); the body is the result's first line, written to be
+ * read on a lock screen, or a fixed line on failure. Tapping opens the card.
+ */
+export function resultNotification(action: { id: string; title: string }, ok: boolean, result: string): Notification {
+  return {
+    title: `Reeve: ${action.title}`,
+    body: ok ? result.split("\n")[0]?.slice(0, 200) : "Could not complete it. Tap to see why.",
+    url: actionPath(action.id),
+    tag: actionTag(action.id),
+  };
+}
 
 /**
  * BR-3.4: the push on every result, through the one send-push function (WP-F5).

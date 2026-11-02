@@ -9,14 +9,13 @@ import { startOutboxWatcher, subscribe } from "@/lib/outbox";
 import { purgeQueryCache } from "@/lib/query";
 import { requestPersistentStorage } from "@/lib/draft";
 import { syncSubscription, watchSubscriptionChanges } from "@/lib/push";
+import { hashFor, parseHash, type Route, type Screen } from "@/lib/route";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
 import Capture from "@/screens/Capture";
 import Due from "@/screens/Due";
 import NeedsYou from "@/screens/NeedsYou";
 import Work from "@/screens/Work";
-
-type Screen = "capture" | "needs-you" | "work" | "due";
 
 /**
  * Write, then decide, then direct, then owe. "Needs you" surfaces what wants
@@ -31,11 +30,53 @@ const NAV = [
   { id: "due", label: "Due", Icon: ListChecks },
 ] as const;
 
+/** Outside the component: the React compiler's lint treats a global written
+ *  in render scope as a mutation, and the hash is the one global this app
+ *  writes on purpose. */
+function setHash(hash: string) {
+  window.location.hash = hash;
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [screen, setScreen] = useState<Screen>("capture");
+  // PN-1: the screen is the hash. A notification tap, a cold launch from one,
+  // and the nav all go through the same address.
+  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
+  const screen = route.screen;
   const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseHash(window.location.hash));
+    // PN-1.4: the worker hands a tapped notification's address to the page
+    // that is already open, so the card opens without a reload.
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "NAVIGATE" || typeof event.data.url !== "string") return;
+      const target = new URL(event.data.url, window.location.origin);
+      if (target.origin !== window.location.origin) return;
+      if (window.location.hash === target.hash) onHash();
+      else setHash(target.hash);
+    };
+    window.addEventListener("hashchange", onHash);
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+    };
+  }, []);
+
+  function navigate(next: Screen) {
+    const hash = hashFor({ screen: next });
+    if (window.location.hash === hash) setRoute({ screen: next });
+    else setHash(hash);
+  }
+
+  /** The focused card has been shown (or found gone): drop the id from the
+   *  address without a history entry, so a reload does not re-open it. */
+  function clearFocus() {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/needs-you`);
+    setRoute({ screen: "needs-you" });
+  }
 
   useEffect(() => subscribe((items) => setPendingCount(items.length)), []);
 
@@ -108,7 +149,9 @@ export default function App() {
     <div className="flex h-full flex-col">
       <main className="pt-safe min-h-0 flex-1">
         {screen === "capture" && <Capture userId={session.user.id} />}
-        {screen === "needs-you" && <NeedsYou userId={session.user.id} />}
+        {screen === "needs-you" && (
+          <NeedsYou userId={session.user.id} focusActionId={route.actionId} onFocused={clearFocus} />
+        )}
         {screen === "work" && <Work />}
         {screen === "due" && <Due userId={session.user.id} />}
       </main>
@@ -123,7 +166,7 @@ export default function App() {
             <button
               key={id}
               type="button"
-              onClick={() => setScreen(id)}
+              onClick={() => navigate(id)}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex flex-1 flex-col items-center gap-1 py-3 transition-colors",

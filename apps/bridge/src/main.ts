@@ -3,7 +3,7 @@ import pg from "pg";
 import { POLL_MS, RATE_LIMITS, loadSecrets } from "./config.ts";
 import { connect } from "./db.ts";
 import { health, log } from "./log.ts";
-import { makePusher } from "./push.ts";
+import { makePusher, WORK_PATH } from "./push.ts";
 import { runClaude } from "./run.ts";
 import { processOnce } from "./worker.ts";
 
@@ -86,7 +86,8 @@ async function loop(): Promise<void> {
           const { rows } = await db.query<{ user_id: string }>(
             "select user_id from actions where status = 'dispatched' and archived_at is null limit 1",
           );
-          if (rows[0]) await deps.push(rows[0].user_id, { title: "Bridge paused", body: `Reached the ${tick.reason}. Work stays queued.`, tag: "bridge-paused" });
+          // PN-7.1: tagged and addressed like every other push; the Work board is where the queue is.
+          if (rows[0]) await deps.push(rows[0].user_id, { title: "Bridge paused", body: `Reached the ${tick.reason}. Work stays queued.`, tag: "bridge", url: WORK_PATH });
         }
       }
     } else {

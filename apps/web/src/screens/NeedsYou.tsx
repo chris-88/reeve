@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertCircle,
   ArrowRight,
@@ -38,7 +39,16 @@ import ChangeRequestDetail from "@/components/ChangeRequestDetail";
  * proposed action to approve/tweak/decline, and an agent result to
  * approve/redo. AI-ordered (AQ-3); nothing is dragged. Empty means caught up.
  */
-export default function NeedsYou({ userId }: { userId: string }) {
+export default function NeedsYou({
+  userId,
+  focusActionId,
+  onFocused,
+}: {
+  userId: string;
+  /** PN-1.2: a card to open on arrival, from a notification's address. */
+  focusActionId?: string;
+  onFocused?: () => void;
+}) {
   const qc = useQueryClient();
   const online = useOnline();
   const [openAction, setOpenAction] = useState<Action | null>(null);
@@ -54,7 +64,7 @@ export default function NeedsYou({ userId }: { userId: string }) {
   const { data: areas = [] } = useAreas();
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
 
-  const { data: actions = [] } = useQuery({
+  const { data: actions = [], isFetched: actionsFetched } = useQuery({
     queryKey: ACTIONS_QK,
     queryFn: async (): Promise<Action[]> => {
       const { data, error } = await supabase
@@ -162,6 +172,29 @@ export default function NeedsYou({ userId }: { userId: string }) {
     () => orderActions(visibleActions, dueByCapture),
     [visibleActions, dueByCapture],
   );
+  // PN-1.2: open the card a notification pointed at, once the list is known.
+  // Gone already (approved from another device, or a stale tap) is said
+  // plainly rather than shown as an empty stream with no explanation.
+  const focused = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusActionId) {
+      focused.current = null;
+      return;
+    }
+    if (!actionsFetched || focused.current === focusActionId) return;
+    focused.current = focusActionId;
+    const target = visibleActions.find((a) => a.id === focusActionId);
+    if (target) {
+      document.getElementById(`action-${target.id}`)?.scrollIntoView({ block: "center" });
+      // Deferred a tick: this is a reaction to an external event (a tap on a
+      // notification), not state derived from render.
+      queueMicrotask(() => setOpenAction(target));
+    } else {
+      toast("Already handled", { description: "That one isn't waiting on you any more." });
+    }
+    onFocused?.();
+  }, [focusActionId, actionsFetched, visibleActions, onFocused]);
+
   const caughtUp =
     ordered.length === 0 &&
     inflight.length === 0 &&
@@ -328,7 +361,7 @@ function ActionRow({
 }) {
   const proposed = action.status === "proposed";
   return (
-    <li className="flex items-center">
+    <li id={`action-${action.id}`} className="flex items-center">
       <button
         type="button"
         onClick={onOpen}

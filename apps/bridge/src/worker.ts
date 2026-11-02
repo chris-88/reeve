@@ -12,7 +12,7 @@ import {
   type Db,
 } from "./db.ts";
 import { buildPrompt, describeDecomposition, parseDecomposeResult, parseTaskResult } from "./prompt.ts";
-import type { Pusher } from "./push.ts";
+import { resultNotification, type Pusher } from "./push.ts";
 import { rateLimited } from "./ratelimit.ts";
 import type { Runner } from "./run.ts";
 
@@ -93,12 +93,7 @@ export async function processOnce(deps: Deps): Promise<Tick> {
   deps.health({ action: action.id, status: ok ? "ok" : "failed", secs: Math.round(outcome.durationMs / 1000), turns: outcome.numTurns, cost: outcome.costUsd?.toFixed(2) ?? null, kind: action.kind });
   deps.log(`${ok ? "returned" : "failed"} ${action.id} in ${Math.round(outcome.durationMs / 1000)}s${error ? `: ${error.slice(0, 200)}` : ""}`);
 
-  await deps.push(action.user_id, {
-    title: `Reeve: ${action.title}`,
-    body: ok ? result.split("\n")[0]?.slice(0, 200) : "Could not complete it. Tap to see why.",
-    url: "/#/needs-you",
-    tag: `bridge-${action.id}`,
-  });
+  await deps.push(action.user_id, resultNotification(action, ok, result));
 
   return { kind: "ran", action, ok, result };
 }

@@ -29,6 +29,22 @@ export type PushNotification = {
   tag?: string;
 };
 
+/**
+ * PN-1.3 / PN-5: the in-app addresses and tags every sender uses, so a tap
+ * lands on the right card and a second result replaces the first notification
+ * rather than stacking under it. The web app's `lib/route.ts` parses exactly
+ * these shapes; `tests/route.test.ts` keeps the two in step.
+ */
+export const NEEDS_YOU_PATH = "/#/needs-you";
+export const WORK_PATH = "/#/work";
+export const DUE_PATH = "/#/due";
+export function actionPath(actionId: string): string {
+  return `${NEEDS_YOU_PATH}/${actionId}`;
+}
+export function actionTag(actionId: string): string {
+  return `action:${actionId}`;
+}
+
 /** iOS truncates well before this; the limit is about payload size, not looks. */
 const MAX_TITLE = 120;
 const MAX_BODY = 300;

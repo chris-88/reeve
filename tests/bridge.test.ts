@@ -9,6 +9,8 @@ import {
   parseTaskResult,
   type PromptAction,
 } from "../apps/bridge/src/prompt.ts";
+import { actionPath, actionTag, resultNotification } from "../apps/bridge/src/push.ts";
+import { actionPath as sharedActionPath, actionTag as sharedActionTag } from "../packages/shared/src/push.ts";
 import { rateLimited } from "../apps/bridge/src/ratelimit.ts";
 import { RESULT_MAX_CHARS } from "../apps/bridge/src/config.ts";
 
@@ -178,5 +180,32 @@ describe("BR-8 rate limit", () => {
   it("pauses at the daily limit even when the last hour is quiet", () => {
     const runs = Array.from({ length: 30 }, (_, i) => ago(90 + i * 30));
     expect(rateLimited(runs, now, { perHour: 6, perDay: 30 })).toMatchObject({ limited: true, reason: expect.stringMatching(/daily/) });
+  });
+});
+
+describe("PN-1.3 / PN-5.1 the push for a result", () => {
+  const a = { id: "0064009a-caee-4271-a891-949040b8ad8f", title: "Ring the foreman" };
+
+  it("opens the card and replaces an earlier push for the same action", () => {
+    const n = resultNotification(a, true, "What I did: rang him.\nWhere: nothing written\nFor you: approve.");
+    expect(n).toEqual({
+      title: "Reeve: Ring the foreman",
+      body: "What I did: rang him.",
+      url: `/#/needs-you/${a.id}`,
+      tag: `action:${a.id}`,
+    });
+  });
+
+  it("says plainly that a run failed, without the error on the lock screen", () => {
+    const n = resultNotification(a, false, "Reeve could not complete this: boom");
+    expect(n.body).toBe("Could not complete it. Tap to see why.");
+    expect(n.url).toBe(actionPath(a.id));
+  });
+
+  it("spells the address and tag exactly as the shared package does", () => {
+    // The worker takes only types from @reeve/shared, so these are duplicated
+    // on purpose; this is what keeps the duplicate honest.
+    expect(actionPath(a.id)).toBe(sharedActionPath(a.id));
+    expect(actionTag(a.id)).toBe(sharedActionTag(a.id));
   });
 });
