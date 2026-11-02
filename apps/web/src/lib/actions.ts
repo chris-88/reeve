@@ -238,11 +238,20 @@ export async function approveAction(qc: QueryClient, action: Action): Promise<vo
   toast("Approved");
 }
 
-/** Send it back for another pass. Returns to the Queued lane; result cleared. */
-export async function redoAction(qc: QueryClient, action: Action): Promise<void> {
+/**
+ * Send it back for another pass. Returns to the Queued lane with Chris's note
+ * (BR-5). The previous result is deliberately kept: the bridge reads it and the
+ * note together as "Previous attempt" / "Chris said", and overwrites it when
+ * the second pass returns. Nothing shows a result while an action is queued.
+ */
+export async function redoAction(
+  qc: QueryClient,
+  action: Action,
+  feedback?: string,
+): Promise<void> {
   await apply(qc, action, {
     status: "dispatched",
-    result: null,
+    feedback: feedback?.trim() || null,
     assignee: null,
     started_at: null,
     queue_position: endOfQueue(),

@@ -63,6 +63,8 @@ export default function ActionDetail({
   const [result, setResult] = useState("");
   // AQ-7: who's on a Work card. Seeded from the action; saved on start / blur.
   const [assignee, setAssignee] = useState(action.assignee ?? "");
+  // BR-5: what to change, sent with Redo so the second pass is not blind.
+  const [feedback, setFeedback] = useState("");
 
   function startTweak() {
     setTitle(action.title);
@@ -202,7 +204,7 @@ export default function ActionDetail({
                     variant="ghost"
                     onClick={() => {
                       onClose();
-                      void redoAction(qc, action);
+                      void redoAction(qc, action, feedback);
                     }}
                   >
                     <RotateCcw className="size-4" aria-hidden /> Redo
@@ -222,6 +224,17 @@ export default function ActionDetail({
                 </Button>
               )}
             </div>
+
+            {review && (
+              <Field label="For a redo (optional)">
+                <Textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="What should change on the next pass?"
+                  className="min-h-16"
+                />
+              </Field>
+            )}
 
             {dispatched && (
               <div className="space-y-3">
@@ -266,8 +279,8 @@ export default function ActionDetail({
             {working && (
               <div className="space-y-3">
                 <p className="text-muted-foreground text-sm">
-                  In progress. When it comes back, paste the result to review it — or mark it done.
-                  (Real agents return work themselves once §9 ships; until then, by hand.)
+                  In progress. The bridge returns the result itself when it finishes; if an
+                  assistant handed something back another way, paste it here to review it.
                 </p>
                 <Field label="Assistant">
                   <Input
