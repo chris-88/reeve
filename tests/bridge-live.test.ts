@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { purgeTestData, signInTestUser } from "./support/test-accounts.ts";
 import { claimNext, connect, type Db } from "../apps/bridge/src/db.ts";
@@ -28,7 +29,7 @@ const ASSIGNEE = `bridge-test@${randomUUID().slice(0, 8)}`;
 let admin: SupabaseClient;
 let db: Db;
 let userId: string;
-const pushes: { userId: string; title: string; body?: string }[] = [];
+const pushes: { userId: string; title: string; body?: string; url?: string; tag?: string }[] = [];
 const runs: RunRequest[] = [];
 let nextOutcome: Partial<RunOutcome> = {};
 
@@ -51,7 +52,7 @@ const deps = (): Deps => ({
     return outcome(nextOutcome);
   },
   push: async (uid, n) => {
-    pushes.push({ userId: uid, title: n.title, body: n.body });
+    pushes.push({ userId: uid, title: n.title, body: n.body, url: n.url, tag: n.tag });
   },
   log: () => {},
   health: () => {},
@@ -85,6 +86,22 @@ async function row(id: string) {
 }
 
 beforeAll(async () => {
+  /**
+   * The live worker must be stopped first. It LISTENs on the same database, so
+   * it claims this suite's dispatched fixtures within a second of their insert
+   * and runs Claude Code on them for real (it did, on 2026-11-02: a fixture
+   * titled "Fixture" was claimed and run in ~/vault before the suite could).
+   * Refusing is cheaper than racing it.
+   */
+  try {
+    const state = execFileSync("systemctl", ["--user", "is-active", "reeve-bridge"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (state === "active") {
+      throw new Error("reeve-bridge is running and would claim this suite's fixtures: `systemctl --user stop reeve-bridge` first, start it again after");
+    }
+  } catch (err) {
+    if (err instanceof Error && /reeve-bridge is running/.test(err.message)) throw err;
+    // systemctl missing or the unit unknown (CI, another machine): nothing to race.
+  }
   if (!URL || !ANON || !SECRET || !DATABASE_URL) throw new Error("Missing config in .env.local");
   admin = createClient(URL, SECRET, { auth: { persistSession: false } });
   db = connect(DATABASE_URL);
@@ -148,7 +165,10 @@ describe("processOnce", () => {
 
     const { data: run } = await admin.from("agent_runs").select("*").eq("capture_id", r.capture_id).eq("step", "bridge").single();
     expect(run).toMatchObject({ ok: true, model: "stub", duration_ms: 1200 });
-    expect(pushes).toEqual([{ userId, title: "Reeve: Fixture", body: "What I did: drafted it." }]);
+    // PN-1.3 / PN-5.1: the push opens this card and replaces any earlier one for it.
+    expect(pushes).toEqual([
+      { userId, title: "Reeve: Fixture", body: "What I did: drafted it.", url: `/#/needs-you/${id}`, tag: `action:${id}` },
+    ]);
   });
 
   it("BR-4.1: a failed run lands in review with the failure text, never silently re-queued", async () => {
@@ -164,6 +184,7 @@ describe("processOnce", () => {
     const { data: run } = await admin.from("agent_runs").select("ok, error").eq("capture_id", r.capture_id).eq("step", "bridge").single();
     expect(run).toEqual({ ok: false, error: "timed out after 40 minutes" });
     expect(pushes[0]?.body).toMatch(/Could not complete/);
+    expect(pushes[0]?.url).toBe(`/#/needs-you/${id}`);
     expect(await processOnce(deps())).toEqual({ kind: "idle" });
   });
 
