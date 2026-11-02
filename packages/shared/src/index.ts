@@ -4,6 +4,7 @@ export * from "./triage-prompt.ts";
 export * from "./commitments.ts";
 export * from "./retrieval.ts";
 export * from "./push.ts";
+export * from "./due.ts";
 export * from "./sentry.ts";
 export * from "./budget.ts";
 export * from "./brief-prompt.ts";
