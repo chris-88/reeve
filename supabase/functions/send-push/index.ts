@@ -3,6 +3,7 @@ import webpush from "web-push";
 import {
   buildPushPayload,
   isSubscriptionGone,
+  NEEDS_YOU_STATUSES,
   type PushNotification,
 } from "../../../packages/shared/src/index.ts";
 
@@ -80,7 +81,19 @@ Deno.serve(async (req) => {
   if (error) return json({ error: error.message }, 500);
   if (!subscriptions?.length) return json({ sent: 0, pruned: 0, failed: 0, no_subscriptions: true });
 
-  const payload = buildPushPayload(body.notification);
+  // PN-2.3: the icon badge is the Needs you count, computed here so every
+  // sender agrees with what the app shows. A failed count sends no badge
+  // rather than a wrong one.
+  const { count: needsYou } = await db
+    .from("actions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", body.user_id)
+    .is("archived_at", null)
+    .in("status", NEEDS_YOU_STATUSES as unknown as string[]);
+  const payload = buildPushPayload({
+    ...body.notification,
+    ...(typeof needsYou === "number" ? { badge: needsYou } : {}),
+  });
   const results = await Promise.allSettled(
     (subscriptions as Subscription[]).map((sub) => deliver(db, sub, payload)),
   );

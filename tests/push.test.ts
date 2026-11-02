@@ -20,6 +20,15 @@ describe("buildPushPayload", () => {
     expect(JSON.stringify(payload)).not.toContain("foreman");
   });
 
+  it("PN-2.3: carries a badge count only when it is a whole non-negative number", () => {
+    expect(JSON.parse(buildPushPayload({ title: "t", badge: 2 })).badge).toBe(2);
+    // Zero is meaningful: it clears the icon.
+    expect(JSON.parse(buildPushPayload({ title: "t", badge: 0 })).badge).toBe(0);
+    for (const badge of [-1, 1.5, Number.NaN, undefined]) {
+      expect(JSON.parse(buildPushPayload({ title: "t", badge })), String(badge)).not.toHaveProperty("badge");
+    }
+  });
+
   it("refuses a url that is not a same-origin path", () => {
     // notificationclick navigates to this. A payload is attacker-controlled
     // the moment anything upstream of it is.

@@ -24,7 +24,8 @@ import {
   subscribe,
   type PendingOp,
 } from "@/lib/outbox";
-import { ACTIONS_QK, approveAction, declineAction, goAction, orderActions } from "@/lib/actions";
+import { ACTIONS_QK, NEEDS_YOU_COUNT_QK, approveAction, declineAction, goAction, orderActions } from "@/lib/actions";
+import { applyBadge } from "@/lib/badge";
 import { useOnline } from "@/lib/useOnline";
 import { useRealtimeChannel } from "@/lib/useRealtimeChannel";
 import CaptureDetail from "@/components/CaptureDetail";
@@ -141,7 +142,13 @@ export default function NeedsYou({
     channel: "needs-you-changes",
     userId,
     subscriptions: [
-      { table: "actions", onChange: () => void qc.invalidateQueries({ queryKey: ACTIONS_QK }) },
+      {
+        table: "actions",
+        onChange: () => {
+          void qc.invalidateQueries({ queryKey: ACTIONS_QK });
+          void qc.invalidateQueries({ queryKey: NEEDS_YOU_COUNT_QK });
+        },
+      },
       {
         table: "captures",
         onChange: () => void qc.invalidateQueries({ queryKey: ["inflight-captures"] }),
@@ -194,6 +201,12 @@ export default function NeedsYou({
     }
     onFocused?.();
   }, [focusActionId, actionsFetched, visibleActions, onFocused]);
+
+  // PN-2.2: what is on screen is the badge, at once — including a decision
+  // still in the outbox, which the server count cannot see yet.
+  useEffect(() => {
+    void applyBadge(ordered.length);
+  }, [ordered.length]);
 
   const caughtUp =
     ordered.length === 0 &&

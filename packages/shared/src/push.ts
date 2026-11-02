@@ -27,6 +27,12 @@ export type PushNotification = {
   url?: string;
   /** Replaces an earlier notification with the same tag instead of stacking. */
   tag?: string;
+  /**
+   * PN-2.3: the app-icon badge after this push — the Needs you count. Set by
+   * `send-push` itself, never by a sender, so every push carries the same
+   * number the app would show. A non-negative integer; zero clears the badge.
+   */
+  badge?: number;
 };
 
 /**
@@ -69,6 +75,9 @@ export function buildPushPayload(notification: PushNotification): string {
     if (body) payload.body = body;
   }
   if (notification.tag) payload.tag = notification.tag;
+  if (Number.isInteger(notification.badge) && (notification.badge as number) >= 0) {
+    payload.badge = notification.badge;
+  }
 
   // Relative, same-origin only. A push payload is attacker-controlled the
   // moment anything upstream of it is, and `notificationclick` navigates.

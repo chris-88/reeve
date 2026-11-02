@@ -9,6 +9,9 @@ import { startOutboxWatcher, subscribe } from "@/lib/outbox";
 import { purgeQueryCache } from "@/lib/query";
 import { requestPersistentStorage } from "@/lib/draft";
 import { syncSubscription, watchSubscriptionChanges } from "@/lib/push";
+import { applyBadge } from "@/lib/badge";
+import { NEEDS_YOU_COUNT_QK } from "@/lib/actions";
+import { NEEDS_YOU_STATUSES } from "@reeve/shared";
 import { hashFor, parseHash, type Route, type Screen } from "@/lib/route";
 import { cn } from "@/lib/utils";
 import SignIn from "@/screens/SignIn";
@@ -95,6 +98,26 @@ export default function App() {
   });
 
   const inFlight = pendingCount + unsettled > 0;
+
+  // PN-2.2: the badge is the Needs you count. Realtime (via NeedsYou's channel)
+  // and the stream's own optimistic count keep it current; the interval is the
+  // backstop for a backgrounded socket.
+  const { data: needsYouCount } = useQuery({
+    queryKey: NEEDS_YOU_COUNT_QK,
+    enabled: !!session,
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("actions")
+        .select("id", { count: "exact", head: true })
+        .is("archived_at", null)
+        .in("status", NEEDS_YOU_STATUSES as unknown as string[]);
+      return count ?? 0;
+    },
+  });
+  useEffect(() => {
+    if (typeof needsYouCount === "number") void applyBadge(needsYouCount);
+  }, [needsYouCount]);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {

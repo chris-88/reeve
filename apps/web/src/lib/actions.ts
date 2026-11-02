@@ -21,6 +21,8 @@ const CHANGE_REQUESTS_QK = ["change_requests"] as const;
  */
 
 export const ACTIONS_QK = ["actions"] as const;
+/** PN-2: the Needs you count behind the app-icon badge (App.tsx). */
+export const NEEDS_YOU_COUNT_QK = ["needs-you-count"] as const;
 /** The Work board's three lanes (AQ-7): dispatched / working / done. */
 export const WORK_QK = ["work-actions"] as const;
 

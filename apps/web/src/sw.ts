@@ -126,7 +126,21 @@ type PushPayload = {
   url?: string;
   /** Collapses replacements of the same logical notification. */
   tag?: string;
+  /** PN-2.3: the Needs you count after this push; zero clears the icon badge. */
+  badge?: number;
 };
+
+/**
+ * PN-2: the app-icon badge. Supported for Home Screen web apps since iOS 16.4,
+ * in the foreground and from a push handler alike. Absent elsewhere, so
+ * guarded; a rejected call is nothing to recover from.
+ */
+function applyBadge(count: number): Promise<void> {
+  const nav = self.navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+  if (typeof nav.setAppBadge !== "function") return Promise.resolve();
+  const call = count > 0 ? nav.setAppBadge(count) : (nav.clearAppBadge?.() ?? nav.setAppBadge(0));
+  return call.catch(() => {});
+}
 
 /**
  * WP-F3.1.
@@ -145,6 +159,7 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title?.trim() || "Reeve";
+  if (typeof payload.badge === "number") event.waitUntil(applyBadge(payload.badge));
   event.waitUntil(
     self.registration.showNotification(title, {
       body: payload.body?.trim() || undefined,
