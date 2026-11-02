@@ -46,6 +46,14 @@ dump becomes a `decompose` action (`actions.kind`) the bridge breaks into
 proposed actions without Go. Areas are now the vault's twelve domains (BR-0).
 `systemctl --user stop reeve-bridge` is the pause switch.
 
+**Notifications close the loop** (`docs/arc-spec-notifications.md`, same branch).
+The app has hash routes (`#/needs-you/<id>` opens a card); a push tap lands on
+the card it names; the icon badge is the Needs you count; `notify-due` says
+what is due at 07:30 Dublin; the ask for permission appears once at the first
+Go; the stall alert pushes when the bridge has not claimed a dispatch in 30
+minutes. **Stop `reeve-bridge` before `pnpm test`**: the service claims the test
+suites' dispatched fixtures and runs them for real.
+
 
 Phase 0 is live at `app.chrisquinn.ie`. Capture → triage → filed, offline
 capable, installable. **Phase 1 Stages 0–3 are live on top of it**: areas are
@@ -188,9 +196,10 @@ pnpm dev              # Vite dev server. No service worker here — devOptions.e
 pnpm build            # tsc --noEmit, vite build, then the secret scan
 pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
-pnpm test             # vitest, 140 tests (bridge-live hits the local stack)
+pnpm test             # vitest, 158 tests (bridge-live hits the local stack; stop reeve-bridge first)
+VITE_SUPABASE_URL=http://localhost:8001 pnpm test:e2e   # e2e against the local stack when api.chrisquinn.ie does not resolve here
 pnpm test:e2e         # playwright, 7 tests; builds and previews first
-pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0017 applied)
+pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0018 applied)
 pnpm --filter @reeve/bridge start      # the bridge in the foreground (normally reeve-bridge.service)
 systemctl --user status reeve-bridge   # is the bridge up; journalctl --user -u reeve-bridge -f
 pnpm db:status        # what is applied, what is pending
@@ -199,16 +208,18 @@ pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
 pnpm triage:report                     # which classifier_hint to edit first
 ```
 
-Six Edge Functions: `triage`, `send-push`, `brief`, `draft-change-request`,
-`file-change-request`, `github-webhook` (plus the shared code they import). The
+Seven Edge Functions: `triage`, `send-push`, `brief`, `draft-change-request`,
+`file-change-request`, `github-webhook`, `notify-due` (plus the shared code they import). The
 bridge is not a function: it is a Node worker in `apps/bridge` that talks to
 Postgres directly and calls `send-push` like any other service-key caller.
 
 Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
-`reeve-file-sweep` every minute, `reeve-stuck-alert` every five,
-`reeve-daily-brief` at 05:10 UTC. They read their configuration from Vault
-(`service_role_key`, `triage_function_url`, `brief_function_url`,
-`file_change_request_url`, `sentry_dsn`) because the migrations are public.
+`reeve-file-sweep` every minute, `reeve-stuck-alert` every five (stuck captures
+and, since 0018, unclaimed dispatches), `reeve-daily-brief` at 05:10 UTC,
+`reeve-due-reminders` at 06:30 and 07:30 UTC (acts at Dublin hour 7). They read
+their configuration from Vault (`service_role_key`, `triage_function_url`,
+`brief_function_url`, `file_change_request_url`, `notify_due_function_url`,
+`send_push_function_url`, `sentry_dsn`) because the migrations are public.
 
 `db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
 seeded without one is readable by nobody — a silent failure that looks like a

@@ -84,6 +84,10 @@ test("captures survive going offline and sync on reconnect", async ({
 
   // F1: a cold load with no network must render the app, not an error page.
   await page.reload();
+  // PN-1: the screen is the hash, so a reload stays on Needs you. The shell
+  // rendering with no network is the assertion; go back to Write to make it.
+  await expect(page.getByRole("navigation")).toBeVisible();
+  await page.getByRole("navigation").getByRole("button", { name: "Write" }).click();
   await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
 
   // F2: the offline read path renders the middle screen, not an error.
