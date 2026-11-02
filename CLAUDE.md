@@ -200,8 +200,27 @@ Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
 seeded without one is readable by nobody — a silent failure that looks like a
 broken app rather than a missing flag.
 
-Deploying the Edge Function is not in `package.json` because it needs the
-Supabase CLI and an access token:
+**Backend is self-hosted (since 2026-11-02).** The Supabase stack runs on the
+quinn machine at `~/code/infra/stacks/reeve/` and is reached at
+`https://api.chrisquinn.ie/reeve` through a Cloudflare Tunnel. There is no
+hosted project to deploy to any more; the commands below are kept for the
+record. The self-hosted equivalents:
+
+- Functions: copy `supabase/functions/<name>/` into
+  `~/code/infra/stacks/reeve/volumes/functions/` (and `packages/shared` into
+  `volumes/packages/shared`, because the functions import it by relative path),
+  then `sudo docker compose up -d --force-recreate functions` in the stack dir.
+- Secrets: `docker-compose.reeve.yml` passes them from the stack's `.env`,
+  rendered by `scripts/render-env reeve` from pass (`infra/reeve/*`).
+- `github-webhook` needs no `--no-verify-jwt`: Caddy injects the anon key on
+  that one path so the gateway passes and the function checks the HMAC itself.
+- Vault secrets (`*_function_url`, `service_role_key`, `sentry_dsn`) point at
+  `http://api-gw:8000/functions/v1/...` inside the stack; the five cron jobs are
+  unchanged.
+- Migrations: `pnpm db:migrate` against `DATABASE_URL` from pass
+  (`env/reeve/DATABASE_URL`, now the local pooler as `postgres.reeve`).
+
+The original hosted-deploy procedure, for reference only:
 
 ```sh
 export SUPABASE_ACCESS_TOKEN=...        # from .env.local
