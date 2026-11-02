@@ -35,7 +35,13 @@ if (!url) {
 
 // Supabase terminates TLS with a chain Node doesn't ship a root for. The
 // connection is still encrypted; we're only skipping chain verification.
-const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+// Hosted Supabase terminates TLS with a chain Node does not ship a root for, so
+// chain verification is skipped there. The self-hosted pooler on this machine
+// (2026-11-02) speaks plain TCP on localhost and refuses an SSL handshake
+// outright, so a local URL gets no TLS at all.
+const sslFor = (u) => (/@(localhost|127\.0\.0\.1)[:/]/.test(u) ? false : { rejectUnauthorized: false });
+
+const client = new pg.Client({ connectionString: url, ssl: sslFor(url) });
 
 const sha = (s) => createHash("sha256").update(s).digest("hex").slice(0, 12);
 
