@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, Pin, Play, RotateCcw } from "lucide-react";
+import { ArrowRight, Check, Copy, Pin, Play, RotateCcw } from "lucide-react";
 import type { Action, Area, Capture } from "@reeve/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import {
   ACTIONS_QK,
   approveAction,
   assignAction,
+  copyBrief,
   declineAction,
   goAction,
   markDone,
@@ -239,8 +240,8 @@ export default function ActionDetail({
             {dispatched && (
               <div className="space-y-3">
                 <p className="text-muted-foreground text-sm">
-                  Queued, waiting to be picked up. Its place in the queue is the order you set on
-                  the board.
+                  Reeve has it. Queued; the order on the Work board is the order it is picked up.
+                  You&rsquo;ll be told when it&rsquo;s done.
                 </p>
                 <Field label="Assistant (optional)">
                   <Input
@@ -272,7 +273,7 @@ export default function ActionDetail({
                     <Check className="size-4" aria-hidden /> Mark done
                   </Button>
                 </div>
-                <BriefDetails brief={action.brief} />
+                <BriefDetails brief={action.brief} action={action} />
               </div>
             )}
 
@@ -324,7 +325,7 @@ export default function ActionDetail({
                     <Check className="size-4" aria-hidden /> Mark done
                   </Button>
                 </div>
-                <BriefDetails brief={action.brief} />
+                <BriefDetails brief={action.brief} action={action} />
               </div>
             )}
 
@@ -369,14 +370,20 @@ export default function ActionDetail({
   );
 }
 
-function BriefDetails({ brief }: { brief: string | null }) {
+function BriefDetails({ brief, action }: { brief: string | null; action?: Action }) {
   if (!brief) return null;
   return (
     <details>
-      <summary className="text-muted-dim cursor-pointer text-sm">The brief you sent</summary>
+      <summary className="text-muted-dim cursor-pointer text-sm">The brief</summary>
       <p className="text-muted-foreground mt-2 font-serif text-sm leading-relaxed whitespace-pre-wrap">
         {brief}
       </p>
+      {action && (
+        // PN-4.3: the manual handoff, for the day the bridge is down.
+        <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={() => void copyBrief(action)}>
+          <Copy className="size-4" aria-hidden /> Copy brief
+        </Button>
+      )}
     </details>
   );
 }

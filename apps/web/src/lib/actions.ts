@@ -137,13 +137,16 @@ export async function dispatchAction(
     queue_position: endOfQueue(),
   });
   void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Sent to an agent", { description: "Brief copied to your clipboard." });
+  // PN-4.3: the bridge picks it up (BR-1); nothing to paste anywhere.
+  toast("Reeve has it", { description: "You'll be told when it's done." });
 }
 
 /**
  * The whole "Go" flow, so the card and the detail sheet share it (AQ-4):
- * respect a Tweaked brief, otherwise assemble one from the capture; copy it to
- * the clipboard; then dispatch to the Work board.
+ * respect a Tweaked brief, otherwise assemble one from the capture; then
+ * dispatch to the Work board, where the bridge claims it (BR-1). The clipboard
+ * copy that used to happen here was the manual handoff the bridge replaced;
+ * `copyBrief` below keeps it one tap away for the day the bridge is down.
  *
  * A reeve-area action is the exception: it routes through the *existing*
  * change-request pipeline (decided with Chris), so building Reeve keeps its one
@@ -167,12 +170,22 @@ export async function goAction(qc: QueryClient, action: Action, area?: Area): Pr
       commitments: (commitmentsRes.data as { text: string; due_text: string | null }[]) ?? [],
     });
   }
+  await dispatchAction(qc, action, brief);
+}
+
+/** PN-4.3: the manual handoff, kept behind an explicit tap. */
+export async function copyBrief(action: Action): Promise<void> {
+  const brief = action.brief?.trim();
+  if (!brief) {
+    toast("No brief yet", { description: "Reeve assembles one when you say Go." });
+    return;
+  }
   try {
     await navigator.clipboard.writeText(brief);
+    toast("Brief copied");
   } catch {
-    /* clipboard may be unavailable; the brief is still saved on the action */
+    toast.error("Couldn't copy", { description: "The brief is still on the card." });
   }
-  await dispatchAction(qc, action, brief);
 }
 
 /**
@@ -256,6 +269,9 @@ export async function redoAction(
     feedback: feedback?.trim() || null,
     assignee: null,
     started_at: null,
+    // Re-dispatched now: the pick-up order and the "not picked up" alert
+    // (PN-7.2) both read dispatched_at.
+    dispatched_at: now(),
     queue_position: endOfQueue(),
   });
   void qc.invalidateQueries({ queryKey: WORK_QK });

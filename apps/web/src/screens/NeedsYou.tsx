@@ -8,6 +8,7 @@ import {
   CheckCheck,
   CloudOff,
   GitPullRequest,
+  Bell,
   Loader2,
   Pin,
   Search,
@@ -26,6 +27,8 @@ import {
 } from "@/lib/outbox";
 import { ACTIONS_QK, NEEDS_YOU_COUNT_QK, approveAction, declineAction, goAction, orderActions } from "@/lib/actions";
 import { applyBadge } from "@/lib/badge";
+import { enablePush } from "@/lib/push";
+import { shouldOfferPush, snoozePushAsk } from "@/lib/pushAsk";
 import { useOnline } from "@/lib/useOnline";
 import { useRealtimeChannel } from "@/lib/useRealtimeChannel";
 import CaptureDetail from "@/components/CaptureDetail";
@@ -56,6 +59,8 @@ export default function NeedsYou({
   const [openCapture, setOpenCapture] = useState<Capture | null>(null);
   const [openCR, setOpenCR] = useState<ChangeRequest | null>(null);
   const [searching, setSearching] = useState(false);
+  // PN-4.1: offered once after a Go, when it can succeed; rests a week on Not now.
+  const [askingPush, setAskingPush] = useState(false);
   // The whole outbox, so change-request and action patches can be overlaid too;
   // the unsent-capture strip derives its own view.
   const [pending, setPending] = useState<PendingOp[]>([]);
@@ -231,6 +236,22 @@ export default function NeedsYou({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
+        {askingPush && (
+          <PushAsk
+            onAllow={() => {
+              setAskingPush(false);
+              // WP-F4.4: requestPermission() only from this tap.
+              void enablePush(userId).then((state) => {
+                if (state === "enabled") toast("Notifications on", { description: "Reeve will tell you when it's done." });
+              });
+            }}
+            onLater={() => {
+              setAskingPush(false);
+              snoozePushAsk();
+            }}
+          />
+        )}
+
         {/* Local, unsent captures. */}
         {pendingCaptures.length > 0 && (
           <ul className="mb-2 space-y-1">
@@ -307,7 +328,11 @@ export default function NeedsYou({
               area={areaById.get(a.area_id ?? "")}
               due={dueByCapture.get(a.capture_id)}
               onOpen={() => setOpenAction(a)}
-              onGo={() => void goAction(qc, a, areaById.get(a.area_id ?? ""))}
+              onGo={() =>
+                void goAction(qc, a, areaById.get(a.area_id ?? "")).then(() => {
+                  if (shouldOfferPush()) setAskingPush(true);
+                })
+              }
               onDecline={() => void declineAction(qc, a)}
               onApprove={() => void approveAction(qc, a)}
             />
@@ -413,7 +438,7 @@ function ActionRow({
       <span className="flex shrink-0 items-center gap-0.5 pl-1">
         {proposed ? (
           <>
-            <RowAction label={`Send "${action.title}" to an agent`} onClick={onGo}>
+            <RowAction label={`Hand "${action.title}" to Reeve`} onClick={onGo}>
               <ArrowRight className="size-4" aria-hidden />
             </RowAction>
             <RowAction label={`File "${action.title}" as just a note`} onClick={onDecline}>
@@ -427,6 +452,32 @@ function ActionRow({
         )}
       </span>
     </li>
+  );
+}
+
+/** PN-4.1: one line, two answers, shown under the stream after a Go. */
+function PushAsk({ onAllow, onLater }: { onAllow: () => void; onLater: () => void }) {
+  return (
+    <div className="border-border/60 bg-card/60 mb-3 flex items-center gap-3 rounded-xl border px-3.5 py-3">
+      <Bell className="text-muted-foreground size-4 shrink-0" aria-hidden />
+      <p className="text-muted-foreground min-w-0 flex-1 text-sm">
+        Reeve will tell you when this is done. Allow notifications?
+      </p>
+      <button
+        type="button"
+        onClick={onAllow}
+        className="text-foreground shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-card"
+      >
+        Allow
+      </button>
+      <button
+        type="button"
+        onClick={onLater}
+        className="text-muted-dim hover:text-foreground shrink-0 rounded-lg px-2 py-1.5 text-sm transition-colors"
+      >
+        Not now
+      </button>
+    </div>
   );
 }
 
