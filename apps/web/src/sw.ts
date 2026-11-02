@@ -35,11 +35,32 @@ registerRoute(
 );
 
 /**
+ * PN-6: the API origin this build talks to, and the one the read-through caches
+ * below match on.
+ *
+ * These matchers used to test `hostname.endsWith(".supabase.co")`. The backend
+ * moved to the self-hosted stack at `api.chrisquinn.ie/reeve` on 2026-11-02 and
+ * both routes silently stopped matching: offline reads of areas and captures
+ * lost their service-worker fallback with no error anywhere. Matching the
+ * configured origin, and a pathname that *contains* `/rest/v1/<table>`, follows
+ * the URL wherever it points next and tolerates the `/reeve` path prefix.
+ */
+const API_ORIGIN = (() => {
+  try {
+    return new URL(import.meta.env.VITE_SUPABASE_URL).origin;
+  } catch {
+    return "";
+  }
+})();
+const isApiTable = (url: URL, table: string) =>
+  API_ORIGIN !== "" && url.origin === API_ORIGIN && url.pathname.includes(`/rest/v1/${table}`);
+
+/**
  * Areas: change roughly never, and the inbox is unreadable without them —
  * every row's colour and label comes from here.
  */
 registerRoute(
-  ({ url }) => url.hostname.endsWith(".supabase.co") && url.pathname.startsWith("/rest/v1/areas"),
+  ({ url }) => isApiTable(url, "areas"),
   new StaleWhileRevalidate({
     cacheName: "reeve-areas",
     plugins: [new ExpirationPlugin({ maxEntries: 4, maxAgeSeconds: 30 * 24 * 60 * 60 })],
@@ -51,8 +72,7 @@ registerRoute(
  * primary offline read path; this is defence in depth for a cold worker.
  */
 registerRoute(
-  ({ url }) =>
-    url.hostname.endsWith(".supabase.co") && url.pathname.startsWith("/rest/v1/captures"),
+  ({ url }) => isApiTable(url, "captures"),
   new NetworkFirst({
     cacheName: "reeve-captures",
     networkTimeoutSeconds: 5,
