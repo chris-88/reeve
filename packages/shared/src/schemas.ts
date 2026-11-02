@@ -159,6 +159,18 @@ export const WORK_STATUSES: readonly ActionStatus[] = ["dispatched", "working", 
  * capture stays the immutable record. No `position` — priority is proposed
  * (AQ-3), never hand-ordered.
  */
+/**
+ * What kind of work an action is (BR-6). A `task` waits for Go and is run by
+ * the bridge once dispatched; a `decompose` is a mind dump the bridge breaks
+ * into proposed actions without waiting for Go, because that is drafting.
+ */
+export const ACTION_KINDS = ["task", "decompose"] as const;
+export const ActionKind = z.enum(ACTION_KINDS);
+export type ActionKind = z.infer<typeof ActionKind>;
+
+/** The assistant identity the bridge works under (BR-1). Shown on the Work card. */
+export const BRIDGE_ASSIGNEE = "claude@quinn";
+
 export const Action = z.object({
   id: z.uuid(),
   user_id: z.uuid(),
@@ -166,6 +178,9 @@ export const Action = z.object({
   title: z.string(),
   brief: z.string().nullable(),
   status: ActionStatus,
+  kind: ActionKind,
+  /** What Chris said on Redo (BR-5); the next run reads it. */
+  feedback: z.string().nullable(),
   area_id: z.string().nullable(),
   pinned_at: z.string().nullable(),
   result: z.string().nullable(),

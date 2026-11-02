@@ -110,6 +110,8 @@ export type ActionPatch = {
   status?: ActionStatus;
   brief?: string;
   result?: string | null;
+  /** BR-5: the note that travels with a Redo. */
+  feedback?: string | null;
   pinned_at?: string | null;
   dispatched_at?: string | null;
   decided_at?: string | null;

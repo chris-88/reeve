@@ -15,6 +15,8 @@ function action(over: Partial<Action> & { id: string }): Action {
     title: over.id,
     brief: null,
     status: "proposed",
+    kind: "task",
+    feedback: null,
     area_id: null,
     pinned_at: null,
     result: null,
