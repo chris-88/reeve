@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CloudOff, Loader2, PenLine, WifiOff } from "lucide-react";
-import type { Area, Capture } from "@reeve/shared";
+import type { Capture } from "@reeve/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
+import { useAreas } from "@/lib/areas";
 import { captureOps, subscribe, type CaptureOp, type PendingOp } from "@/lib/outbox";
 import { useOnline } from "@/lib/useOnline";
 import { cn } from "@/lib/utils";
@@ -38,15 +39,7 @@ export default function Inbox({ userId }: { userId: string }) {
 
   useEffect(() => subscribe((items) => setPending(captureOps(items))), []);
 
-  const { data: areas = [] } = useQuery({
-    queryKey: ["areas"],
-    staleTime: Infinity,
-    queryFn: async (): Promise<Area[]> => {
-      const { data, error } = await supabase.from("areas").select("*").order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: areas = [] } = useAreas();
 
   const {
     data: captures = [],

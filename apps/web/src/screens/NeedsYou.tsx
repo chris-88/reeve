@@ -15,6 +15,7 @@ import {
 import type { Action, Area, Capture, ChangeRequest } from "@reeve/shared";
 import { NEEDS_YOU_STATUSES } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
+import { useAreas } from "@/lib/areas";
 import {
   captureOps,
   pendingActionPatch,
@@ -50,15 +51,7 @@ export default function NeedsYou({ userId }: { userId: string }) {
   useEffect(() => subscribe(setPending), []);
   const pendingCaptures = useMemo(() => captureOps(pending), [pending]);
 
-  const { data: areas = [] } = useQuery({
-    queryKey: ["areas"],
-    staleTime: Infinity,
-    queryFn: async (): Promise<Area[]> => {
-      const { data, error } = await supabase.from("areas").select("*").order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: areas = [] } = useAreas();
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
 
   const { data: actions = [] } = useQuery({

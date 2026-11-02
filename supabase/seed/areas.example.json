@@ -7,10 +7,10 @@
     "sort_order": 10
   },
   {
-    "id": "personal",
-    "label": "Personal",
-    "classifier_hint": "Personal life and admin: family, household, health, finances, travel, appointments, errands.",
-    "colour": "#E2B93B",
+    "id": "home",
+    "label": "Home",
+    "classifier_hint": "The house and household: utilities, repairs, purchases, errands.",
+    "colour": "#B07D4F",
     "sort_order": 20
   },
   {
@@ -19,5 +19,13 @@
     "classifier_hint": "Use when the capture does not clearly belong to any other area, or is too ambiguous to place confidently. Never force a guess — route here instead.",
     "colour": "#5A6270",
     "sort_order": 999
+  },
+  {
+    "id": "old-area",
+    "label": "Old area",
+    "classifier_hint": "An area you no longer use. Keep the row (older captures and actions reference it) but retire it: triage stops offering it and the app stops listing it. The bridge (docs/arc-spec-bridge.md) routes work by these ids, so they should match your vault's domains.",
+    "colour": "#7B8794",
+    "sort_order": 900,
+    "active": false
   }
 ]

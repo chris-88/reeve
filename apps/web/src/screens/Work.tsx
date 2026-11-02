@@ -21,6 +21,7 @@ import { GripVertical, Search, SquareKanban } from "lucide-react";
 import type { Action, Area } from "@reeve/shared";
 import { WORK_STATUSES } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
+import { useAreas } from "@/lib/areas";
 import { WORK_QK, positionBetween, reorderQueued } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import ActionDetail from "@/components/ActionDetail";
@@ -41,15 +42,7 @@ export default function Work() {
   const [openAction, setOpenAction] = useState<Action | null>(null);
   const [searching, setSearching] = useState(false);
 
-  const { data: areas = [] } = useQuery({
-    queryKey: ["areas"],
-    staleTime: Infinity,
-    queryFn: async (): Promise<Area[]> => {
-      const { data, error } = await supabase.from("areas").select("*").order("sort_order");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: areas = [] } = useAreas();
   const areaById = useMemo(() => new Map(areas.map((a) => [a.id, a])), [areas]);
 
   const { data: actions = [], isLoading } = useQuery({

@@ -71,7 +71,7 @@ describe("TRIAGE_JSON_SCHEMA", () => {
 
 describe("TriageResult", () => {
   const valid = {
-    area_id: "personal",
+    area_id: "home",
     title: "Bins out Tuesday",
     summary: "The bins go out on Tuesday.",
     entities: { ...EMPTY_ENTITIES, dates: ["Tuesday"] },
