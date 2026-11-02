@@ -242,6 +242,11 @@ export const TriageResult = z.object({
     .describe(
       "When actionable, a short imperative naming the thing to do — 'Ring the foreman about the pour', 'Draft the invoice for Mary'. At most 10 words, no trailing full stop. Null when actionable is false.",
     ),
+  decompose: z
+    .boolean()
+    .describe(
+      "True only when the capture is a mind dump: three or more distinct things to be done, each of which would be its own action. False for a single task, however long, and for a pure note.",
+    ),
 });
 export type TriageResult = z.infer<typeof TriageResult>;
 

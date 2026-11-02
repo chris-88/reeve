@@ -64,6 +64,7 @@ describe("TRIAGE_JSON_SCHEMA", () => {
         "commitments",
         "actionable",
         "action_title",
+        "decompose",
       ]),
     );
   });
@@ -80,6 +81,7 @@ describe("TriageResult", () => {
     ],
     actionable: true,
     action_title: "Put the bins out",
+    decompose: false,
   };
 
   it("accepts well-formed output", () => {
@@ -102,6 +104,12 @@ describe("TriageResult", () => {
     // The producer reads result.actionable directly; structured outputs makes
     // it required, so an omitted flag is a validation failure, not a false.
     const { actionable: _omitted, ...partial } = valid;
+    expect(TriageResult.safeParse(partial).success).toBe(false);
+  });
+
+  it("rejects a missing decompose flag", () => {
+    // BR-6.2: required-boolean like actionable; an omitted flag is not a false.
+    const { decompose: _omitted, ...partial } = valid;
     expect(TriageResult.safeParse(partial).success).toBe(false);
   });
 

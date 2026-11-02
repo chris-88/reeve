@@ -175,6 +175,7 @@ Deno.serve(async (req) => {
         // the fallback if it flagged the capture actionable but named none.
         title: result.action_title?.trim() || result.title,
         actionable: result.actionable,
+        decompose: result.decompose,
       });
     } catch (actionErr) {
       console.error(`[triage] proposed action for ${captureId} failed`, actionErr);
@@ -267,9 +268,16 @@ async function writeCommitments(
  */
 async function writeProposedAction(
   db: SupabaseClient,
-  o: { captureId: string; userId: string; areaId: string; title: string; actionable: boolean },
+  o: {
+    captureId: string;
+    userId: string;
+    areaId: string;
+    title: string;
+    actionable: boolean;
+    decompose: boolean;
+  },
 ): Promise<void> {
-  if (!o.actionable) return;
+  if (!o.actionable && !o.decompose) return;
 
   const { data: existing, error: readError } = await db
     .from("actions")
@@ -279,12 +287,16 @@ async function writeProposedAction(
   if (readError) throw new Error(`action lookup: ${readError.message}`);
   if (existing && existing.length > 0) return;
 
+  // BR-6.2: a mind dump becomes one `decompose` action rather than one task.
+  // The bridge picks it up without Go — decomposing is drafting — and turns it
+  // into proposed actions, commitments and notes, every one still needing Go.
   const { error } = await db.from("actions").insert({
     user_id: o.userId,
     capture_id: o.captureId,
     area_id: o.areaId,
-    title: o.title,
+    title: o.decompose ? `Break this down: ${o.title}` : o.title,
     status: "proposed",
+    kind: o.decompose ? "decompose" : "task",
   });
   if (error) throw new Error(`action: ${error.message}`);
 }

@@ -75,6 +75,7 @@ Rules:
 - actionable: does this capture ask for something to be *done*? Set true when it reads as a task or an intent to act — draft, send, ring, reply, fix, buy, book, arrange, chase, decide. This is broader than a commitment: it need not be a promise Chris made, and it need not name a date. Set false for a pure note — a reference, an observation, a quote, a fact to remember, or an idea with no ask attached.
   - When it sits between the two, lean towards actionable. A surfaced item Chris dismisses in one tap costs him less than one he never sees; the queue is where he decides, so let it decide.
 - action_title: when actionable is true, a short imperative naming the thing to do — "Ring the foreman about the pour", "Draft the invoice for Mary". At most 10 words, no trailing full stop. Null when actionable is false.
+- decompose: is this a mind dump? Set true only when the capture contains three or more distinct intents that would each be their own action — a drive-home dictation covering the dentist, a reply to the coach and an invoice is one; a single long task with several steps is not. Be conservative: when in doubt, false. When true, actionable is true and action_title summarises the whole dump in a few words ("Sort out the school-run list"), because the breakdown happens later.
 
 Write in Irish/British English.`;
 }
