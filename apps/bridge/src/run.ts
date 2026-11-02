@@ -52,7 +52,7 @@ export const runClaude: Runner = (req) =>
     ];
     const finish = (o: Omit<RunOutcome, "durationMs">) => resolve({ ...o, durationMs: Date.now() - started });
 
-    execFile(
+    const child = execFile(
       "claude",
       args,
       {
@@ -75,7 +75,10 @@ export const runClaude: Runner = (req) =>
           return finish({ ok: false, output: "", error: `timed out after ${Math.round((req.timeoutMs ?? RUN_TIMEOUT_MS) / 60000)} minutes`, model, costUsd, numTurns, stderr });
         }
         if (err && !parsed) {
-          return finish({ ok: false, output: "", error: `claude exited ${String((err as { code?: unknown }).code ?? "")}: ${tail(stderr) || tail(stdout) || err.message}`, model, costUsd, numTurns, stderr });
+          const code = (err as { code?: unknown; signal?: unknown }).code;
+          const signal = (err as { signal?: unknown }).signal;
+          const how = signal || code === 143 || code === 137 ? `was stopped (${String(signal ?? `exit ${String(code)}`)})` : `exited ${String(code ?? "")}`;
+          return finish({ ok: false, output: "", error: `claude ${how}${tail(stderr) || tail(stdout) ? `: ${tail(stderr) || tail(stdout)}` : ""}`, model, costUsd, numTurns, stderr });
         }
         if (parsed?.is_error || (parsed?.subtype && parsed.subtype !== "success")) {
           return finish({ ok: false, output: result, error: `${String(parsed?.subtype ?? "error")}${result ? `: ${tail(result)}` : ""}`, model, costUsd, numTurns, stderr });
@@ -86,4 +89,7 @@ export const runClaude: Runner = (req) =>
         finish({ ok: true, output: result, error: null, model, costUsd, numTurns, stderr });
       },
     );
+    // The prompt is in argv; with stdin left open the CLI waits three seconds for
+    // piped input on every run and warns about it. Close it at once.
+    child.stdin?.end();
   });
