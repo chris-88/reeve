@@ -40,7 +40,8 @@ export function makePusher(functionsUrl: string, serviceRoleKey: string, log: (s
         signal: AbortSignal.timeout(15_000),
       });
       const body = await res.text();
-      log(`push ${res.status} ${body.slice(0, 120)}`);
+      // The address and tag are logged (never the body: WP-F3.4 applies to logs too).
+      log(`push ${notification.tag ?? "-"} ${notification.url ?? "-"} → ${res.status} ${body.slice(0, 120)}`);
     } catch (err) {
       log(`push failed: ${err instanceof Error ? err.message : String(err)}`);
     }
