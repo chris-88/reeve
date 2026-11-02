@@ -34,7 +34,18 @@ in a table alongside the specific observation that would earn it.
 
 ---
 
-## Where things stand (2026-07-22)
+## Where things stand (2026-11-02)
+
+**The bridge is built and running** (`docs/arc-spec-bridge.md`, branch `bridge`
+until merged). Go on an action no longer ends in a copy and paste: a worker on
+the quinn machine (`apps/bridge`, systemd user unit `reeve-bridge.service` from
+`~/dotfiles`) claims the head of the Queued lane as `claude@quinn`, runs the
+brief with `claude -p` in the directory its area maps to, and writes the result
+back as `review` with a push. Redo carries a note (`actions.feedback`); a mind
+dump becomes a `decompose` action (`actions.kind`) the bridge breaks into
+proposed actions without Go. Areas are now the vault's twelve domains (BR-0).
+`systemctl --user stop reeve-bridge` is the pause switch.
+
 
 Phase 0 is live at `app.chrisquinn.ie`. Capture → triage → filed, offline
 capable, installable. **Phase 1 Stages 0–3 are live on top of it**: areas are
@@ -177,18 +188,21 @@ pnpm dev              # Vite dev server. No service worker here — devOptions.e
 pnpm build            # tsc --noEmit, vite build, then the secret scan
 pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
-pnpm test             # vitest, 70 tests
+pnpm test             # vitest, 140 tests (bridge-live hits the local stack)
 pnpm test:e2e         # playwright, 7 tests; builds and previews first
-pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes
+pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0017 applied)
+pnpm --filter @reeve/bridge start      # the bridge in the foreground (normally reeve-bridge.service)
+systemctl --user status reeve-bridge   # is the bridge up; journalctl --user -u reeve-bridge -f
 pnpm db:status        # what is applied, what is pending
 pnpm db:seed --owner you@example.com   # areas, from the gitignored seed file
 pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
 pnpm triage:report                     # which classifier_hint to edit first
 ```
 
-Six Edge Functions now: `triage`, `send-push`, `brief`, `draft-change-request`,
-`file-change-request` (plus the shared code they import). Deploy each with the
-Supabase CLI as below.
+Six Edge Functions: `triage`, `send-push`, `brief`, `draft-change-request`,
+`file-change-request`, `github-webhook` (plus the shared code they import). The
+bridge is not a function: it is a Node worker in `apps/bridge` that talks to
+Postgres directly and calls `send-push` like any other service-key caller.
 
 Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
 `reeve-file-sweep` every minute, `reeve-stuck-alert` every five,
@@ -347,10 +361,28 @@ A `select word_similarity('a','b');` ahead of the `create function` fixes it.
 The error says "permission denied to set parameter", which sends you looking at
 roles rather than at loading.
 
-**Docker is not available on this machine.** `supabase db push` and `db dump`
-shell out to it and will fail. `scripts/migrate.mjs` connects to Postgres
-directly over `DATABASE_URL` instead, tracks applied migrations in
-`_reeve_migrations` with SHA checksums, and is idempotent. Use it.
+**Use `scripts/migrate.mjs`, not `supabase db push`.** It connects to Postgres
+directly over `DATABASE_URL`, tracks applied migrations in `_reeve_migrations`
+with SHA checksums, and is idempotent. (Docker is on this machine now — it runs
+the stack — but the Supabase CLI's push still does not fit a self-hosted pooler.)
+
+**The local pooler refuses TLS.** Every pg script forced `ssl` and failed with
+"The server does not support SSL connections" from the cutover until 2026-11-02;
+they now skip TLS for a `localhost` URL. A new script that opens `pg.Client`
+must do the same (`sslFor(url)` in `scripts/migrate.mjs`).
+
+**`api.chrisquinn.ie` may not resolve from the quinn machine itself** while the
+router's resolver cache holds the pre-Cloudflare answer. The live tests then
+fail with `ENOTFOUND`. Run them against the stack's own port instead:
+`VITE_SUPABASE_URL=http://localhost:8001 pnpm test`. The functions container is
+`reeve-edge-functions`; redeploy a function by copying its source (and
+`packages/shared/src`) into `~/code/infra/stacks/reeve/volumes/` and
+`docker compose … up -d --force-recreate functions` there.
+
+**A headless run can only write where `~/.claude/settings.json` allows.** The
+bridge adds nothing to the allowlist. Note the vault moved from `~/vaults` to
+`~/vault` on 2026-11-02; until the `Edit(...)` rule says `vault`, bridge runs
+cannot file a note.
 
 **Run `pnpm db:status` before naming a migration.** Tracking is by filename, so
 a duplicate number is applied happily and silently — and if it sorts before the
