@@ -1,0 +1,21 @@
+{
+  "name": "@reeve/bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The bridge: claims dispatched actions from Reeve's database, runs them headlessly with Claude Code on the quinn machine, and returns the result to review. docs/arc-spec-bridge.md.",
+  "scripts": {
+    "start": "node src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@reeve/shared": "workspace:*",
+    "pg": "^8.16.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/pg": "^8.15.6",
+    "typescript": "^5.9.3"
+  }
+}
