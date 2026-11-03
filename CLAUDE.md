@@ -55,20 +55,33 @@ consolidation, the GitHub loop retired) are done. What is live:
 - **Domains are the vault's twelve** plus `unsorted`, in the `areas` table
   (the product says "domain"; the `domains` view is the read side). Six
   first-edition ids remain as inactive rows for old foreign keys.
-- **Notifications close the loop**: hash routes (`#/needs-you/<id>` opens a
-  card), a push tap lands on its card, the icon badge is the Needs you count,
-  `notify-due` at 07:30 Dublin, the ask for permission after the first Go, a
-  stall alert when nothing claims a dispatch in 30 minutes.
+- **The app is one thread (E2, 2026-11-03).** `apps/web` was rewritten:
+  `screens/Thread.tsx` is the only screen. A composer at the bottom, the
+  thread above it newest-last, older messages loading on scroll-up, and a
+  header with search (filters in place), settings (theme, notifications,
+  sign out) and a "needs you" chip that jumps to the oldest waiting message.
+  Messages come from the `thread_events` view (migration 0020), one row per
+  message with `happened_at`; the app reads it by keyset on
+  `(happened_at, id)` (`lib/useThread.ts`) and applies realtime changes to the
+  cache by refetching that one message's rows. Two visual weights only:
+  bubbles talk, cards decide (`components/Message.tsx`, `ActionCard.tsx`,
+  `DueCard.tsx`). An action is one message that changes state in place:
+  proposed → "On it." → result → the one collapsed line. Routes are `#/` and
+  `#/m/<kind>:<uuid>`; every push sender uses `messagePath()` from
+  `packages/shared/src/push.ts`. The due digest, "paused" and "stalled" are rows
+  in `notices` (the one table E2 added) so they can appear in the thread.
+  Light and dark come from one token set in `styles.css` (`data-theme` on
+  `<html>`, `lib/theme.ts`); motion is the `motion` package, gated on
+  `prefers-reduced-motion`.
 - **Gone in E1 (2026-11-03):** the change-request tables, views, enum, cron
   job, the `draft-change-request` / `file-change-request` / `github-webhook`
   functions, the GitHub webhook and the `claude.yml` workflow, the Caddy
   webhook route, the `GITHUB_*` secrets. Reeve changes itself by drafting on a
   local branch in a `reeve`-domain run; Chris ships from the machine session.
-- **Still first-edition until E2:** the four-tab nav (Write · Needs you · Work ·
-  Due), the Work board with its drag reorder, the separate Due screen. E2
-  replaces all of `screens/` and `components/` with Capture, Today and the
-  Library (spec §5); the durability libraries under `lib/` and `sw.ts` move
-  across unchanged.
+- **Gone in E2:** the four-tab nav, Needs you, the Work board and its drag
+  reorder, the Due screen, the Library, `@dnd-kit`, the badge/separator/
+  skeleton primitives. Next: E3 (triage files notes to the vault through the
+  bridge, dates always resolve) and E4 (Gmail and Calendar through `gog`).
 
 Two things belong to Chris and are not decided for him: the real-device check
 (aeroplane mode, cold launch from the home screen on the iPhone), and anything
@@ -85,8 +98,8 @@ pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
 pnpm test             # vitest (bridge-live hits the local stack; stop reeve-bridge first)
 VITE_SUPABASE_URL=http://localhost:8001 pnpm test:e2e   # e2e against the local stack when api.chrisquinn.ie does not resolve here
-pnpm test:e2e         # playwright, 7 tests; builds and previews first
-pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0019 applied)
+pnpm test:e2e         # playwright, 8 tests; builds and previews first. Stop reeve-bridge first
+pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0020 applied)
 pnpm --filter @reeve/bridge start      # the bridge in the foreground (normally reeve-bridge.service)
 systemctl --user status reeve-bridge   # is the bridge up; journalctl --user -u reeve-bridge -f
 pnpm db:status        # what is applied, what is pending
@@ -263,6 +276,22 @@ fail with `ENOTFOUND`. Run them against the stack's own port instead:
 bridge adds nothing to the allowlist. Note the vault moved from `~/vaults` to
 `~/vault` on 2026-11-02; until the `Edit(...)` rule says `vault`, bridge runs
 cannot file a note.
+
+**The persisted query cache writes on a two-second throttle.** An e2e test
+that loads the thread, goes offline and reloads inside those two seconds finds
+an empty cache and a "Loading" thread, and reads as an offline bug. It is not;
+wait 2.5 s after the data is on screen before cutting the network. Both
+offline suites do.
+
+**Triage inserts the proposed action before it logs its run.** The thread's
+"Filed…" line is dated from the triage `agent_runs` row, so without an
+adjustment it sorted *after* the proposal card. The view pins it a millisecond
+ahead of the earliest action for that capture (migration 0020).
+
+**A departing message is briefly on screen twice.** The composer animates the
+sent text up into the thread while the real bubble renders; a `getByText`
+locator for that text is a strict-mode violation for ~220 ms. Scope e2e
+locators to the thread (`getByRole("log")`).
 
 **Run `pnpm db:status` before naming a migration.** Tracking is by filename, so
 a duplicate number is applied happily and silently — and if it sorts before the
