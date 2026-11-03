@@ -10,62 +10,31 @@ const EMAIL = "e2e@reeve.test";
 const PASSWORD = "e2e-" + "x".repeat(20);
 
 const admin = createClient(URL, SECRET, { auth: { persistSession: false } });
-
-/** Resolved once, so no test or hook pays a second listUsers against the
- * intermittently-slow auth admin API. */
 let userId: string;
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
-  // Identity via sign-in, not the auth admin API — see resolveTestUserId.
   userId = await resolveTestUserId(admin, { url: URL, anonKey: ANON, email: EMAIL, password: PASSWORD });
+  await admin.from("areas").upsert(
+    [{ id: "unsorted", label: "Unsorted", classifier_hint: "Test fixture.", colour: "#71717a", sort_order: 99, owner_id: userId }],
+    { onConflict: "owner_id,id" },
+  );
 });
 
-/**
- * P1-F13.3. This suite writes captures through the UI, so teardown is
- * unconditional and scoped by account. The accumulation *assertion* lives in
- * CI's `check-test-accounts.mjs` step (both jobs, `if: always()`) rather than
- * here — running it in every hook meant a second flaky listUsers per teardown,
- * which is what timed the hooks out.
- */
 test.afterAll(async () => {
   test.setTimeout(120_000);
   if (userId) await purgeTestData(admin, userId);
 });
 
-/**
- * The acceptance test for F1 through F4 together: the shell boots with no
- * network, a capture typed offline survives, and it syncs on reconnect.
- * None of this is exercisable against the dev server.
- */
-test("captures survive going offline and sync on reconnect", async ({
-  page,
-  context,
-  browserName,
-}) => {
-  /**
-   * Chromium only.
-   *
-   * Playwright's WebKit throws "WebKit encountered an internal error" on a
-   * reload while offline, so it cannot exercise a service-worker-served
-   * navigation at all. That is a harness limitation, not an app defect — the
-   * same assertions pass on Chromium.
-   *
-   * The consequence is real though: offline behaviour on the engine the app
-   * actually ships to is NOT covered by CI, and still has to be checked by
-   * hand on a device. WebKit continues to run every other test in the suite.
-   */
-  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
-
+async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByPlaceholder("you@example.com").fill(EMAIL);
   await page.getByPlaceholder("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
+  await expect(page.getByLabel("Tell Reeve")).toBeVisible();
+}
 
-  // Wait for the worker to register and activate, then confirm it controls
-  // the page. Registration alone is not enough — an uncontrolled page has no
-  // offline capability.
+async function workerInControl(page: import("@playwright/test").Page) {
   await page.waitForFunction(
     async () => {
       const reg = await navigator.serviceWorker?.getRegistration();
@@ -74,138 +43,108 @@ test("captures survive going offline and sync on reconnect", async ({
     null,
     { timeout: 30_000 },
   );
-  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
-    timeout: 30_000,
+  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30_000 });
+}
+
+/**
+ * §5 acceptance, rule 3: offline, type three messages; back online, all three
+ * file within fifteen seconds of triage and their "Filed" replies appear
+ * without a reload. Chromium only: Playwright's WebKit cannot reload offline.
+ */
+test("three messages sent offline survive a reload and file on reconnect", async ({ page, context, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
+
+  await signIn(page);
+  await workerInControl(page);
+  await page.waitForTimeout(2000);
+
+  await context.setOffline(true);
+
+  // F1: a cold load with no network renders the thread, not an error page.
+  await page.reload();
+  await expect(page.getByLabel("Tell Reeve")).toBeVisible();
+  await expect(page.getByText(/Offline\./)).toBeVisible();
+
+  const marker = randomUUID().slice(0, 8);
+  const texts = [1, 2, 3].map((i) => `offline ${marker} note ${i}`);
+  for (const t of texts) {
+    await page.getByLabel("Tell Reeve").fill(t);
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByLabel("Tell Reeve")).toHaveValue("");
+    await expect(page.getByRole("log").getByText(t)).toBeVisible();
+  }
+  // Pending, visibly, and still here after a cold launch with no network.
+  await expect(page.getByText("sending…")).toHaveCount(3);
+  await page.reload();
+  for (const t of texts) await expect(page.getByRole("log").getByText(t)).toBeVisible();
+
+  await context.setOffline(false);
+
+  const user = createClient(URL, ANON, { auth: { persistSession: false } });
+  await user.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
+  await expect
+    .poll(
+      async () => {
+        const { data } = await user.from("captures").select("status").like("raw_text", `%${marker}%`);
+        return (data ?? []).filter((r) => r.status === "done").length;
+      },
+      { timeout: 120_000, intervals: [1500] },
+    )
+    .toBe(3);
+
+  // Their replies arrive by realtime: no reload.
+  await expect(page.getByText("sending…")).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByText(/^Filed/)).toHaveCount(3, { timeout: 30_000 });
+});
+
+/**
+ * A due item ticked with no signal has to stick: through the outbox, across a
+ * cold reload, and onto the server when the network is back.
+ */
+test("a due item ticked offline survives a cold reload and syncs", async ({ page, context, browserName }) => {
+  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
+
+  const marker = randomUUID().slice(0, 8);
+  const { data: capture } = await admin
+    .from("captures")
+    .insert({ user_id: userId, raw_text: `due fixture ${marker}`, status: "done", title: `Fixture ${marker}`, area_id: "unsorted" })
+    .select()
+    .single();
+  const text = `Drop the trailer back ${marker}`;
+  const dueAt = new Date().toISOString().slice(0, 10);
+  const { data: commitment } = await admin
+    .from("commitments")
+    .insert({ user_id: userId, capture_id: capture!.id, text, due_at: dueAt, fingerprint: `e2e-${marker}` })
+    .select()
+    .single();
+  // The morning digest, as notify-due would leave it.
+  await admin.from("notices").insert({
+    user_id: userId,
+    kind: "due",
+    body: `Due today: 1. ${text}`,
+    meta: { items: [{ id: commitment!.id, text, due_at: dueAt }], today: 1, overdue: 0 },
   });
-  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
+
+  await signIn(page);
+  await workerInControl(page);
+  await expect(page.getByText(text)).toBeVisible();
+  // The persisted cache writes on a 2 s throttle; give it the thread.
   await page.waitForTimeout(2500);
 
   await context.setOffline(true);
 
-  // F1: a cold load with no network must render the app, not an error page.
-  await page.reload();
-  // PN-1: the screen is the hash, so a reload stays on Needs you. The shell
-  // rendering with no network is the assertion; go back to Write to make it.
-  await expect(page.getByRole("navigation")).toBeVisible();
-  await page.getByRole("navigation").getByRole("button", { name: "Write" }).click();
-  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
-
-  // F2: the offline read path renders the middle screen, not an error.
-  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
-  await expect(page.getByRole("heading", { name: "Needs you" })).toBeVisible();
-
-  // F3/F4: a capture taken offline is durable and visible as pending.
-  const marker = randomUUID().slice(0, 8);
-  await page.getByRole("navigation").getByRole("button", { name: "Write" }).click();
-  await page.getByLabel("Capture a thought").fill(`offline ${marker} drop the trailer back`);
-  await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
-  await expect(page.getByLabel("Capture a thought")).toHaveValue("");
-
-  // The offline capture is visible as pending in "Needs you" before it syncs.
-  await page.getByRole("navigation").getByRole("button", { name: "Needs you" }).click();
-  await expect(page.getByText(new RegExp(marker))).toBeVisible();
-
-  await context.setOffline(false);
-  await page.reload();
-
-  const user = createClient(URL, ANON, { auth: { persistSession: false } });
-  await user.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
-
-  await expect
-    .poll(
-      async () => {
-        const { data } = await user
-          .from("captures")
-          .select("status")
-          .like("raw_text", `%${marker}%`)
-          .maybeSingle();
-        return data?.status ?? "absent";
-      },
-      { timeout: 90_000, intervals: [1500] },
-    )
-    .toBe("done");
-});
-
-/**
- * P1-F2's acceptance criterion, and the one that matters most: marking a
- * commitment done on a building site with no signal has to work.
- *
- * The fixture is written straight to the database rather than dictated,
- * because what is under test is the mutation path — the model call would only
- * add cost and flakiness to a test that is not about triage.
- */
-test("a commitment completed offline survives a cold reload and syncs", async ({
-  page,
-  context,
-  browserName,
-}) => {
-  test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
-
-  const marker = randomUUID().slice(0, 8);
-
-  const { data: capture } = await admin
-    .from("captures")
-    .insert({
-      user_id: userId,
-      raw_text: `offline commitment fixture ${marker}`,
-      status: "done",
-      title: `Fixture ${marker}`,
-      summary: "A fixture.",
-      entities: { people: [], dates: [], amounts: [], orgs: [] },
-    })
-    .select()
-    .single();
-
-  const text = `Drop the trailer back ${marker}`;
-  const { data: commitment } = await admin
-    .from("commitments")
-    .insert({
-      user_id: userId,
-      capture_id: capture!.id,
-      text,
-      due_at: new Date().toISOString().slice(0, 10),
-      fingerprint: `e2e-${marker}`,
-    })
-    .select()
-    .single();
-
-  await page.goto("/");
-  await page.getByPlaceholder("you@example.com").fill(EMAIL);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
-
-  // The worker has to be in control before the page can survive a reload.
-  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, {
-    timeout: 30_000,
-  });
-
-  await page.getByRole("navigation").getByRole("button", { name: "Due" }).click();
-  await expect(page.getByText(text)).toBeVisible();
-
-  await context.setOffline(true);
-
-  // Immediately, with no network: the tap is the acknowledgement.
   await page.getByRole("button", { name: `Mark done: ${text}` }).click();
-  await expect(page.getByText(text)).toBeHidden();
+  await expect(page.getByRole("button", { name: `Reopen: ${text}` })).toBeVisible();
 
-  // Still done after a cold launch. This is the part a purely in-memory
-  // optimistic update gets wrong — the state lives in IndexedDB, so the app
-  // does not come back up telling him he still owes it.
   await page.reload();
-  await page.getByRole("navigation").getByRole("button", { name: "Due" }).click();
-  await expect(page.getByText(text)).toBeHidden();
+  await expect(page.getByRole("button", { name: `Reopen: ${text}` })).toBeVisible();
 
   await context.setOffline(false);
 
   await expect
     .poll(
       async () => {
-        const { data } = await admin
-          .from("commitments")
-          .select("status")
-          .eq("id", commitment!.id)
-          .maybeSingle();
+        const { data } = await admin.from("commitments").select("status").eq("id", commitment!.id).maybeSingle();
         return data?.status ?? "absent";
       },
       { timeout: 90_000, intervals: [1500] },
@@ -213,25 +152,18 @@ test("a commitment completed offline survives a cold reload and syncs", async ({
     .toBe("done");
 });
 
-/** UI-3: offline must read as offline, not as an endless spinner. */
+/** Offline must read as offline, not as an endless spinner. */
 test("offline shows an offline state, not a spinner", async ({ page, context, browserName }) => {
   test.skip(browserName === "webkit", "WebKit cannot emulate offline navigation");
 
-  await page.goto("/");
-  await page.getByPlaceholder("you@example.com").fill(EMAIL);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
-
+  await signIn(page);
   await context.setOffline(true);
-  await page.getByLabel("Capture a thought").fill("offline copy check");
-  await page.getByRole("main").getByRole("button", { name: /^Capture/ }).click();
+  await page.getByLabel("Tell Reeve").fill("offline copy check");
+  await page.getByRole("button", { name: "Send" }).click();
 
-  await expect(page.getByText("Offline. Saved on this device.")).toBeVisible();
-  // A spinner that can never resolve is a lie.
+  await expect(page.getByText(/Offline\./)).toBeVisible();
   await expect(page.locator(".animate-spin")).toHaveCount(0);
-  await expect(page.getByText("Retry")).toBeHidden();
 
   await context.setOffline(false);
-  await expect(page.getByText("Offline. Saved on this device.")).toBeHidden({ timeout: 20_000 });
+  await expect(page.getByText(/Offline\./)).toBeHidden({ timeout: 20_000 });
 });

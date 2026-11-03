@@ -4,10 +4,11 @@ import { randomUUID } from "node:crypto";
 import { purgeTestData, resolveTestUserId } from "../tests/support/test-accounts.ts";
 
 /**
- * PN-1 and PN-2 (docs/arc-spec-notifications.md): a notification's address
- * opens the card it names, and the app-icon badge follows the Needs you count.
- * A real push cannot be delivered to Playwright (WP-F6.2), so this drives the
- * address directly and stubs the Badging API.
+ * E-3c: a notification's address scrolls to and highlights its message, the
+ * app-icon badge is the count of messages that need you, and Approve folds
+ * the card to its one line and clears the badge. A real push cannot be
+ * delivered to Playwright (WP-F6.2), so this drives the address directly and
+ * stubs the Badging API.
  */
 const URL = process.env.VITE_SUPABASE_URL!;
 const ANON = process.env.VITE_SUPABASE_ANON_KEY!;
@@ -33,8 +34,7 @@ test.afterAll(async () => {
   if (userId) await purgeTestData(admin, userId);
 });
 
-test("a notification's address opens its card, and the badge is the Needs you count", async ({ page }) => {
-  // One action waiting for review, as the bridge would leave it.
+test("a notification's address opens its card; Approve folds it and clears the badge", async ({ page }) => {
   const marker = randomUUID().slice(0, 8);
   const { data: capture } = await admin
     .from("captures")
@@ -78,20 +78,26 @@ test("a notification's address opens its card, and the badge is the Needs you co
   await page.getByPlaceholder("you@example.com").fill(EMAIL);
   await page.getByPlaceholder("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("main").getByRole("button", { name: /^Capture/ })).toBeVisible();
+  await expect(page.getByLabel("Tell Reeve")).toBeVisible();
 
-  // PN-1.2: the address a bridge push carries.
-  await page.goto(`/#/needs-you/${action!.id}`);
-  await expect(page.getByRole("heading", { name: `Notification fixture ${marker}` })).toBeVisible();
-  await expect(page.getByText("What I did: nothing, this is a fixture.")).toBeVisible();
+  // The address a bridge push carries.
+  await page.goto(`/#/m/action:${action!.id}`);
+  await expect(page.getByText(`Notification fixture ${marker}`)).toBeVisible();
+  await expect(page.getByText("nothing, this is a fixture.")).toBeVisible();
+  await expect(page.locator(`#m-action\\:${action!.id}`)).toHaveClass(/highlight/);
 
-  // PN-2.2: one thing needs him, so the icon says 1.
+  // One thing needs you: the icon says 1 and so does the chip.
   await expect.poll(async () => page.evaluate(() => (window as unknown as { __badge: number[] }).__badge.at(-1))).toBe(1);
+  await expect(page.getByRole("button", { name: /1 need you/ })).toBeVisible();
 
-  // PN-1.2: the focus is consumed — the id leaves the address without a history entry.
-  await expect.poll(async () => page.evaluate(() => window.location.hash)).toBe("#/needs-you");
+  // The focus is consumed: the id leaves the address without a history entry.
+  await expect.poll(async () => page.evaluate(() => window.location.hash)).toBe("");
 
-  // Approve clears it.
+  await page.screenshot({ path: "test-results/thread-result-card.png" });
+
+  // Approve folds the card to its one line and clears the badge.
   await page.getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByText(/^Approved/)).toBeVisible();
   await expect.poll(async () => page.evaluate(() => (window as unknown as { __badge: number[] }).__badge.at(-1))).toBe(0);
+  await expect(page.getByRole("button", { name: /need you/ })).toBeHidden();
 });
