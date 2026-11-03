@@ -18,13 +18,18 @@ export function connect(databaseUrl: string): Db {
  * BR-1.1: claim the head of the queue atomically. Dispatched actions first, in
  * the order the Work board shows (queue_position, then dispatch time); then a
  * proposed `decompose` (BR-6.3), oldest first. `for update skip locked` means
- * two workers could never take the same row, though v1 runs one.
+ * two workers could never take the same row, though v1 runs one. The e2e
+ * account is never claimed: its fixtures are not work.
  */
 export const CLAIM_SQL = `
 with next as (
   select id from actions
    where archived_at is null
      and (status = 'dispatched' or (status = 'proposed' and kind = 'decompose'))
+     -- CI's end-to-end account dispatches fixtures against the live stack; the
+     -- bridge ran them for real (and edited the vault) until this. The live
+     -- bridge suite's own account (bridge@reeve.test) is still claimable.
+     and user_id not in (select id from auth.users where email like 'e2e@%')
    order by (status = 'dispatched') desc, queue_position nulls last, coalesce(dispatched_at, created_at)
    limit 1
    for update skip locked
