@@ -4,9 +4,9 @@
  * Self-hosted variable fonts. No CDN, no third-party request, no FOUT beyond
  * the first load.
  *
- * Newsreader carries the writing surface and headings — a capture app should
- * feel like somewhere you write, not somewhere you fill in a form. Geist takes
- * the UI chrome, where neutrality and legibility matter more than character.
+ * E-6: two faces, two voices. Geist is the interface and your own messages;
+ * Newsreader is Reeve's words, so the assistant reads differently from the
+ * chrome without a label.
  */
 @font-face {
   font-family: "Newsreader";
@@ -24,58 +24,104 @@
 }
 
 /*
- * Dark-first. Used in cars, on sites, one-handed, often in poor light — and at
- * a desk. High contrast and large touch targets are the brief.
+ * E-6: one token set, two themes.
  *
- * The greys carry a slight warm tint rather than sitting on pure blue-black:
- * it reads as considered rather than default, and it stops the area colours
- * looking stuck on.
+ * Light is warm paper, not white; dark is near-black in the same hue, not grey.
+ * One accent, used only where a tap is wanted: the card's edge, the primary
+ * button, the count chip. Borders are the foreground at low alpha ("hairline"),
+ * never a separate grey, so they sit right on both themes.
  *
- * shadcn's semantic tokens are defined in terms of this palette, so components
- * inherit the direction rather than dragging in their own theme.
+ * `data-theme` on <html> is "light", "dark" or absent (system). The media
+ * query covers the system case; the attribute overrides it.
  */
-@theme {
-  --color-bg: #0c0b0d;
-  --color-surface: #16151a;
-  --color-surface-2: #1e1d23;
-  --color-line: #2b2932;
-  --color-text: #f2f0ee;
-  --color-muted: #9b96a3;
-  /*
-   * 5.1:1 on --color-bg. For text that should recede without becoming
-   * unreadable — timestamps, day headers, section labels.
-   *
-   * This exists because `text-muted-foreground/70` and friends were dimming an
-   * already-muted token a second time, landing at 3.8:1 and below. No text-*
-   * class in this app should carry an opacity modifier.
-   */
-  --color-muted-dim: #83808a;
-  --color-danger: #f2685f;
+:root {
+  --paper: #f6f3ee;
+  --surface: #fcfaf6;
+  --surface-2: #efebe4;
+  --ink: #1c1a18;
+  --ink-2: #6b665f;
+  --ink-3: #928d85;
+  --hair: color-mix(in oklab, var(--ink) 9%, transparent);
+  --hair-strong: color-mix(in oklab, var(--ink) 16%, transparent);
+  --accent: #2f63c7;
+  --accent-ink: #ffffff;
+  --danger: #c2443b;
+  --you: #e9e4db;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --paper: #0e0d0c;
+  --surface: #151413;
+  --surface-2: #1d1b19;
+  --ink: #f0ece6;
+  --ink-2: #9d978e;
+  --ink-3: #6f6a63;
+  --hair: color-mix(in oklab, var(--ink) 12%, transparent);
+  --hair-strong: color-mix(in oklab, var(--ink) 20%, transparent);
+  --accent: #6f95ea;
+  --accent-ink: #0e0d0c;
+  --danger: #e2675d;
+  --you: #211f1c;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e0d0c;
+    --surface: #151413;
+    --surface-2: #1d1b19;
+    --ink: #f0ece6;
+    --ink-2: #9d978e;
+    --ink-3: #6f6a63;
+    --hair: color-mix(in oklab, var(--ink) 12%, transparent);
+    --hair-strong: color-mix(in oklab, var(--ink) 20%, transparent);
+    --accent: #6f95ea;
+    --accent-ink: #0e0d0c;
+    --danger: #e2675d;
+    --you: #211f1c;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--ink);
+  --color-muted: var(--ink-2);
+  --color-muted-dim: var(--ink-3);
+  --color-hair: var(--hair);
+  --color-hair-strong: var(--hair-strong);
+  --color-brand: var(--accent);
+  --color-brand-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-you: var(--you);
 
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-serif: "Newsreader", ui-serif, Georgia, serif;
 
-  --radius: 0.875rem;
+  --radius: 14px;
+  --radius-card: 14px;
+  --radius-composer: 20px;
 
   /* shadcn tokens, mapped onto the palette above. */
-  --color-background: var(--color-bg);
-  --color-foreground: var(--color-text);
-  --color-card: var(--color-surface);
-  --color-card-foreground: var(--color-text);
-  --color-popover: var(--color-surface);
-  --color-popover-foreground: var(--color-text);
-  --color-primary: var(--color-text);
-  --color-primary-foreground: var(--color-bg);
-  --color-secondary: var(--color-surface-2);
-  --color-secondary-foreground: var(--color-text);
-  --color-muted-foreground: var(--color-muted);
-  --color-accent: var(--color-surface-2);
-  --color-accent-foreground: var(--color-text);
-  --color-destructive: var(--color-danger);
-  --color-destructive-foreground: var(--color-text);
-  --color-border: var(--color-line);
-  --color-input: var(--color-line);
-  --color-ring: var(--color-text);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+  --color-muted-foreground: var(--ink-2);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--hair);
+  --color-input: var(--hair-strong);
+  --color-ring: var(--accent);
 }
 
 /* Horizontal chip rails: scrollable, but no scrollbar furniture. */
@@ -98,6 +144,22 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* E-6: hairline borders, half a pixel where the screen can draw it. */
+@utility hairline {
+  border-width: 1px;
+  border-color: var(--hair);
+  @media (min-resolution: 2dppx) {
+    border-width: 0.5px;
+  }
+}
+@utility hairline-t {
+  border-top-width: 1px;
+  border-color: var(--hair);
+  @media (min-resolution: 2dppx) {
+    border-top-width: 0.5px;
+  }
+}
+
 html,
 body,
 #root {
@@ -105,26 +167,33 @@ body,
 }
 
 /* Installed to the iOS home screen with viewport-fit=cover, `height: 100%` does
-   not reliably track the standalone viewport, so the flex column comes up short
-   and the bottom nav floats above an empty strip. `100dvh` tracks the real
+   not reliably track the standalone viewport. `100dvh` tracks the real
    installed-PWA viewport; the `100%` above stays as the fallback. */
 #root {
   height: 100dvh;
 }
 
 body {
-  /* A very slight lift at the top keeps the screen from reading as flat black. */
-  background:
-    radial-gradient(120% 60% at 50% 0%, #14131a 0%, transparent 70%),
-    var(--color-bg);
-  background-attachment: fixed;
-  color: var(--color-text);
+  background: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
-  font-feature-settings: "ss01", "cv01";
+  font-size: 15px;
+  line-height: 22px;
+  letter-spacing: -0.01em;
+  font-feature-settings: "ss01", "cv01", "tnum";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   /* Stop iOS bouncing the whole page when the keyboard opens. */
   overscroll-behavior-y: none;
+}
+
+/* E-6: Reeve's voice. */
+.voice {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 25px;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 /* iOS zooms the viewport when focusing an input below 16px. Never let it. */
@@ -136,41 +205,58 @@ select {
 
 /* Visible focus, always. Never remove it for aesthetics. */
 :focus-visible {
-  outline: 2px solid var(--color-ring);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/*
- * ...except the writing surface, where the caret already shows focus and a
- * near-white ring around the page's only content is noise rather than
- * affordance. The field is focused for the entire time someone is writing, so
- * this ring was effectively permanent.
- *
- * Scoped to shadcn's data-slot so it stays tied to the component, and
- * deliberately not applied to `input` — the sign-in form has two fields and
- * genuinely benefits from a focus indicator when tabbing between them.
- */
-[data-slot="textarea"]:focus-visible {
+/* ...except the composer, where the caret already shows focus. */
+[data-slot="composer"]:focus-visible {
   outline: none;
 }
 
 /*
- * The thought departs.
- *
- * Answers "where did it go?" physically rather than with a sentence of copy,
- * and pays off the ArrowUp already in the button. Written as a CSS animation
- * so the reduced-motion block below clamps it — a scripted animation would
- * ignore that entirely.
+ * "On it": three dots breathing. CSS so the reduced-motion block clamps it.
  */
-@keyframes depart {
-  to {
-    transform: translateY(-12px);
-    opacity: 0;
+@keyframes breathe {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
   }
 }
+.dots > span {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: breathe 1.4s ease-in-out infinite;
+}
+.dots > span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dots > span:nth-child(3) {
+  animation-delay: 0.36s;
+}
 
-.animate-depart {
-  animation: depart 180ms ease-out forwards;
+/* A message a notification pointed at: one slow pulse of the accent, then rest. */
+@keyframes highlight {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+.highlight {
+  animation: highlight 900ms ease-out 1;
+  border-radius: var(--radius-card);
 }
 
 @media (prefers-reduced-motion: reduce) {

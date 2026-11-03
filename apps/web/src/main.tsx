@@ -4,10 +4,13 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import App from "./App";
 import { cacheBuster, persister, queryClient, shouldPersistQuery } from "@/lib/query";
 import { initObservability } from "@/lib/observability";
+import { applyTheme } from "@/lib/theme";
 import "./styles.css";
 
 // Before anything else renders, so a failure during the first paint is caught.
 initObservability();
+// Before first paint, so the paper is the right colour from the first frame.
+applyTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

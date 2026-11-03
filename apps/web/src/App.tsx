@@ -1,41 +1,18 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, ListChecks, PenLine, SquareKanban } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import UpdatePrompt from "@/components/UpdatePrompt";
 import { supabase } from "@/lib/supabase";
-import { startOutboxWatcher, subscribe } from "@/lib/outbox";
+import { startOutboxWatcher } from "@/lib/outbox";
 import { purgeQueryCache } from "@/lib/query";
 import { requestPersistentStorage } from "@/lib/draft";
 import { syncSubscription, watchSubscriptionChanges } from "@/lib/push";
-import { applyBadge } from "@/lib/badge";
-import { NEEDS_YOU_COUNT_QK } from "@/lib/actions";
-import { NEEDS_YOU_STATUSES } from "@reeve/shared";
-import { hashFor, parseHash, type Route, type Screen } from "@/lib/route";
-import { cn } from "@/lib/utils";
+import { parseHash, type Route } from "@/lib/route";
+import { watchTheme } from "@/lib/theme";
 import SignIn from "@/screens/SignIn";
-import Capture from "@/screens/Capture";
-import Due from "@/screens/Due";
-import NeedsYou from "@/screens/NeedsYou";
-import Work from "@/screens/Work";
+import Thread from "@/screens/Thread";
 
-/**
- * Write, then decide, then direct, then owe. "Needs you" surfaces what wants
- * your judgment; "Work" (AQ-7) is where you see what your assistants are doing
- * and order what they pick up next; Due is the time lens. The old chronological
- * Inbox is retired; its history is the Library.
- */
-const NAV = [
-  { id: "capture", label: "Write", Icon: PenLine },
-  { id: "needs-you", label: "Needs you", Icon: Bell },
-  { id: "work", label: "Work", Icon: SquareKanban },
-  { id: "due", label: "Due", Icon: ListChecks },
-] as const;
-
-/** Outside the component: the React compiler's lint treats a global written
- *  in render scope as a mutation, and the hash is the one global this app
- *  writes on purpose. */
+/** Outside the component: the hash is the one global this app writes on purpose. */
 function setHash(hash: string) {
   window.location.hash = hash;
 }
@@ -43,16 +20,16 @@ function setHash(hash: string) {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  // PN-1: the screen is the hash. A notification tap, a cold launch from one,
-  // and the nav all go through the same address.
+  // E-3c: the address is the hash. A notification tap, a cold launch from one,
+  // and a link inside the thread all go through it.
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
-  const screen = route.screen;
-  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => watchTheme(), []);
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash(window.location.hash));
     // PN-1.4: the worker hands a tapped notification's address to the page
-    // that is already open, so the card opens without a reload.
+    // that is already open, so the message is shown without a reload.
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type !== "NAVIGATE" || typeof event.data.url !== "string") return;
       const target = new URL(event.data.url, window.location.origin);
@@ -68,56 +45,12 @@ export default function App() {
     };
   }, []);
 
-  function navigate(next: Screen) {
-    const hash = hashFor({ screen: next });
-    if (window.location.hash === hash) setRoute({ screen: next });
-    else setHash(hash);
-  }
-
-  /** The focused card has been shown (or found gone): drop the id from the
-   *  address without a history entry, so a reload does not re-open it. */
-  function clearFocus() {
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/needs-you`);
-    setRoute({ screen: "needs-you" });
-  }
-
-  useEffect(() => subscribe((items) => setPendingCount(items.length)), []);
-
-  // Anything not yet filed, whether still local or already in the database.
-  const { data: unsettled = 0 } = useQuery({
-    queryKey: ["unsettled"],
-    enabled: !!session,
-    refetchInterval: 5000,
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("captures")
-        .select("id", { count: "exact", head: true })
-        .neq("status", "done");
-      return count ?? 0;
-    },
-  });
-
-  const inFlight = pendingCount + unsettled > 0;
-
-  // PN-2.2: the badge is the Needs you count. Realtime (via NeedsYou's channel)
-  // and the stream's own optimistic count keep it current; the interval is the
-  // backstop for a backgrounded socket.
-  const { data: needsYouCount } = useQuery({
-    queryKey: NEEDS_YOU_COUNT_QK,
-    enabled: !!session,
-    refetchInterval: 15_000,
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("actions")
-        .select("id", { count: "exact", head: true })
-        .is("archived_at", null)
-        .in("status", NEEDS_YOU_STATUSES as unknown as string[]);
-      return count ?? 0;
-    },
-  });
-  useEffect(() => {
-    if (typeof needsYouCount === "number") void applyBadge(needsYouCount);
-  }, [needsYouCount]);
+  /** The addressed message has been shown (or found gone): drop the id from
+   *  the address without a history entry, so a reload does not re-open it. */
+  const clearFocus = useCallback(() => {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setRoute({});
+  }, []);
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -126,11 +59,9 @@ export default function App() {
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      // F10.3: a refresh token that cannot be renewed — typically after a long
-      // spell offline — ends in a SIGNED_OUT once the app is back online rather
-      // than in silent 401s. setSession(null) returns to sign-in; purge the
-      // cached rows so none survive into the next session. The outbox and the
-      // draft are left alone: they belong to the device and to the same user.
+      // F10.3: a refresh token that cannot be renewed ends in SIGNED_OUT;
+      // purge the cached rows so none survive into the next session. The
+      // outbox and the draft are left alone: they belong to the device.
       if (event === "SIGNED_OUT") void purgeQueryCache();
     });
     return () => sub.subscription.unsubscribe();
@@ -138,21 +69,10 @@ export default function App() {
 
   useEffect(() => {
     if (!session) return;
-    // Ask to be exempt from eviction. The outbox and the draft both live in
-    // storage Safari will clear after ~7 days of non-use otherwise.
     void requestPersistentStorage();
-
-    /**
-     * Reconcile the push subscription on every launch.
-     *
-     * A push service rotates an endpoint without asking, and the service
-     * worker that hears about it has no session to write the new one with. The
-     * watcher shortens the window; this is what actually closes it.
-     */
     void syncSubscription(session.user.id);
     const stopWatchingPush = watchSubscriptionChanges(session.user.id);
     const stopOutbox = startOutboxWatcher();
-
     return () => {
       stopWatchingPush();
       stopOutbox();
@@ -162,7 +82,7 @@ export default function App() {
   if (!ready) {
     return (
       <div className="grid h-full place-items-center">
-        <div className="bg-muted-foreground/40 size-2 animate-pulse rounded-full" />
+        <div className="bg-muted-dim size-2 animate-pulse rounded-full" />
       </div>
     );
   }
@@ -170,49 +90,9 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <main className="pt-safe min-h-0 flex-1">
-        {screen === "capture" && <Capture userId={session.user.id} />}
-        {screen === "needs-you" && (
-          <NeedsYou userId={session.user.id} focusActionId={route.actionId} onFocused={clearFocus} />
-        )}
-        {screen === "work" && <Work />}
-        {screen === "due" && <Due userId={session.user.id} />}
+      <main className="min-h-0 flex-1">
+        <Thread userId={session.user.id} focusMessageId={route.messageId} onFocused={clearFocus} />
       </main>
-
-      <nav
-        aria-label="Main"
-        className="border-border/60 bg-background/80 pb-safe flex shrink-0 border-t backdrop-blur-lg"
-      >
-        {NAV.map(({ id, label, Icon }) => {
-          const active = screen === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => navigate(id)}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-3 transition-colors",
-                active ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              <span className="relative">
-                <Icon className="size-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
-                {id === "needs-you" && inFlight && (
-                  // "Something is waiting on you." Decorative — the accessible
-                  // name must stay "Needs you".
-                  <span
-                    aria-hidden
-                    className="bg-foreground absolute -top-0.5 -right-1 size-1.5 rounded-full"
-                  />
-                )}
-              </span>
-              <span className="text-xs font-medium">{label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
       <UpdatePrompt />
       <Toaster position="top-center" />
     </div>

@@ -56,11 +56,10 @@ export default function UpdatePrompt() {
   return (
     <div
       role="status"
-      className="pb-safe fixed inset-x-0 bottom-0 z-20 px-4 pb-2"
-      style={{ marginBottom: "4.5rem" }}
+      className="fixed inset-x-0 top-0 z-20 px-4 pt-[calc(env(safe-area-inset-top)+3.25rem)]"
     >
-      <div className="border-border bg-card mx-auto flex max-w-md items-center gap-3 rounded-xl border p-3 shadow-lg">
-        <Download className="text-muted-foreground size-4 shrink-0" aria-hidden />
+      <div className="hairline bg-surface mx-auto flex max-w-md items-center gap-3 rounded-[14px] border p-3">
+        <Download className="text-muted size-4 shrink-0" strokeWidth={1.5} aria-hidden />
         <p className="flex-1 text-sm">
           {blocked ? `An update is ready — it'll apply ${blocked}.` : "An update is ready."}
         </p>
@@ -82,7 +81,7 @@ export default function UpdatePrompt() {
           type="button"
           aria-label="Dismiss update notice"
           onClick={() => setNeedRefresh(false)}
-          className="text-muted-foreground hover:text-foreground p-1"
+          className="text-muted hover:text-text grid size-9 place-items-center"
         >
           <X className="size-4" aria-hidden />
         </button>

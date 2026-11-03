@@ -1,324 +1,129 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Action, Area } from "@reeve/shared";
+import type { Area } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { assembleBrief } from "@/lib/brief";
 import { enqueueActionPatch, type ActionPatch } from "@/lib/outbox";
-
+import type { Message } from "@/lib/thread";
 
 /**
- * The decisions the "Needs you" stream makes on an action (AQ-2/AQ-4/AQ-5).
- * One place, because the card and the detail sheet trigger the same
- * transitions and must not drift.
+ * The decisions a card in the thread makes on an action (E-4). One place, so
+ * the card and the deep-linked card cannot drift.
  *
- * Durable via the outbox, with an optimistic remove-from-stream: a judgment,
- * like a capture or a commitment edit, must survive being made with no signal.
- * Two transitions stay online by nature and say so — a reeve Go (a model call)
- * and the Work board's own operations below (AQ-7), which run while you watch.
+ * Durable via the outbox: a judgment made with no signal must survive. The
+ * thread overlays the pending patch on the message (useThread), so the card
+ * collapses the moment it is tapped and stays collapsed across a reload before
+ * the queue has flushed. No success toasts: the collapse is the acknowledgement.
  */
 
-export const ACTIONS_QK = ["actions"] as const;
-/** PN-2: the Needs you count behind the app-icon badge (App.tsx). */
+/** PN-2: the Needs you count behind the app-icon badge and the header chip. */
 export const NEEDS_YOU_COUNT_QK = ["needs-you-count"] as const;
-/** The Work board's three lanes (AQ-7): dispatched / working / done. */
-export const WORK_QK = ["work-actions"] as const;
 
-/** End of the Queued lane. Monotonic, so a new dispatch needs no read. */
-export function endOfQueue(): number {
-  return Date.now();
-}
-
-/**
- * The queue_position for a card dropped between two others (AQ-7). Midpoint
- * when both exist, just past the edge otherwise. Pure but for the empty-lane
- * fallback; the three real cases are unit-tested.
- */
-export function positionBetween(before: number | undefined, after: number | undefined): number {
-  if (before != null && after != null) return (before + after) / 2;
-  if (after != null) return after - 1;
-  if (before != null) return before + 1;
-  return endOfQueue();
-}
-
-/**
- * AQ-3: the proposed order. Pinned first (most recent pin leads), then by the
- * linked commitment's due date (overdue → soonest → none), then recency. Pure
- * and unit-tested; kept as a single call site so v2's model-scored importance
- * can replace it without touching the stream.
- */
-export function orderActions(
-  actions: readonly Action[],
-  dueByCapture: Map<string, string>,
-): Action[] {
-  return [...actions].sort((a, b) => {
-    if (a.pinned_at && b.pinned_at) return b.pinned_at.localeCompare(a.pinned_at);
-    if (a.pinned_at) return -1;
-    if (b.pinned_at) return 1;
-
-    const da = dueByCapture.get(a.capture_id);
-    const db = dueByCapture.get(b.capture_id);
-    if (da && db && da !== db) return da < db ? -1 : 1;
-    if (da && !db) return -1;
-    if (db && !da) return 1;
-
-    return b.created_at.localeCompare(a.created_at);
-  });
-}
+export type ActionMessage = Extract<Message, { type: "action" }>;
 
 function now() {
   return new Date().toISOString();
 }
 
-/** Drop an action from the stream cache immediately; the query confirms later. */
-function removeFromStream(qc: QueryClient, id: string) {
-  qc.setQueryData<Action[]>(ACTIONS_QK, (old) => old?.filter((a) => a.id !== id));
+async function apply(qc: QueryClient, m: ActionMessage, patch: ActionPatch, userId: string): Promise<void> {
+  await enqueueActionPatch(m.actionId, userId, patch);
+  void qc.invalidateQueries({ queryKey: NEEDS_YOU_COUNT_QK });
 }
 
-/** Patch an action in place in the stream cache (a pin re-orders, it stays). */
-function patchInStream(qc: QueryClient, id: string, patch: Partial<Action>) {
-  qc.setQueryData<Action[]>(ACTIONS_QK, (old) =>
-    old?.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+/** End of the bridge's queue. Monotonic, so a new dispatch needs no read. */
+export function endOfQueue(): number {
+  return Date.now();
+}
+
+/** "Not now": the capture stays filed; nothing is dispatched. */
+export async function declineAction(qc: QueryClient, m: ActionMessage, userId: string): Promise<void> {
+  await apply(qc, m, { status: "declined", decided_at: now() }, userId);
+}
+
+/**
+ * "Hand to Reeve": store the brief and move it to dispatched; the bridge
+ * claims it (BR-1). The card becomes "On it." in place. A brief Chris tweaked
+ * is respected; otherwise one is assembled from the capture's own words.
+ */
+export async function handToReeve(qc: QueryClient, m: ActionMessage, userId: string, area?: Area): Promise<void> {
+  let brief = m.brief?.trim() ?? "";
+  if (!brief) {
+    const [captureRes, commitmentsRes] = await Promise.all([
+      supabase.from("captures").select("raw_text").eq("id", m.captureId).maybeSingle(),
+      supabase.from("commitments").select("text, due_text").eq("capture_id", m.captureId),
+    ]);
+    brief = assembleBrief({
+      actionTitle: m.title,
+      rawText: (captureRes.data?.raw_text as string | undefined) ?? "",
+      areaLabel: area?.label,
+      areaHint: area?.classifier_hint,
+      commitments: (commitmentsRes.data as { text: string; due_text: string | null }[] | null) ?? [],
+    });
+  }
+  await apply(qc, m, { status: "dispatched", brief, dispatched_at: now(), queue_position: endOfQueue() }, userId);
+}
+
+/** Approve the result. The card collapses to "Approved · time". */
+export async function approveAction(qc: QueryClient, m: ActionMessage, userId: string): Promise<void> {
+  await apply(qc, m, { status: "done", decided_at: now() }, userId);
+}
+
+/**
+ * Redo with a note (BR-5). Back to the bridge's queue; the previous result is
+ * kept so the next run reads "Previous attempt" and "Chris said" together.
+ */
+export async function redoAction(qc: QueryClient, m: ActionMessage, userId: string, feedback: string): Promise<void> {
+  await apply(
+    qc,
+    m,
+    {
+      status: "dispatched",
+      feedback: feedback.trim() || null,
+      assignee: null,
+      started_at: null,
+      dispatched_at: now(),
+      queue_position: endOfQueue(),
+    },
+    userId,
   );
 }
 
-/**
- * The durable transition every stream decision shares: remove from the stream
- * at once, then queue the write. The outbox retries until it lands, so there is
- * no failure toast here — the departure is the acknowledgement, as with a
- * capture. NeedsYou overlays the pending patch, so a decision survives a reload
- * before the queue has flushed.
- */
-async function apply(
-  qc: QueryClient,
-  action: Action,
-  patch: ActionPatch,
-  { optimistic = true }: { optimistic?: boolean } = {},
-): Promise<void> {
-  if (optimistic) removeFromStream(qc, action.id);
-  await enqueueActionPatch(action.id, action.user_id, patch);
+/** A failed run: try again, from the top, with no note. */
+export async function retryAction(qc: QueryClient, m: ActionMessage, userId: string): Promise<void> {
+  await apply(
+    qc,
+    m,
+    { status: "dispatched", result: null, assignee: null, started_at: null, dispatched_at: now(), queue_position: endOfQueue() },
+    userId,
+  );
 }
 
-// --- proposed → … --------------------------------------------------------
-
-/** "Just a note": the capture stays filed as reference; nothing is dispatched. */
-export async function declineAction(qc: QueryClient, action: Action): Promise<void> {
-  await apply(qc, action, { status: "declined", decided_at: now() });
-  toast("Filed as a note", {
-    action: { label: "Undo", onClick: () => void restoreToProposed(qc, action) },
-  });
+/** A failed run: drop it. Reads as "Dropped · time". */
+export async function dropAction(qc: QueryClient, m: ActionMessage, userId: string): Promise<void> {
+  await apply(qc, m, { status: "declined", decided_at: now() }, userId);
 }
 
-export async function restoreToProposed(qc: QueryClient, action: Action): Promise<void> {
-  // Put it back in the stream optimistically, then queue the restore.
-  qc.setQueryData<Action[]>(ACTIONS_QK, (old) => {
-    const without = (old ?? []).filter((a) => a.id !== action.id);
-    return [...without, { ...action, status: "proposed", decided_at: null }];
-  });
-  await enqueueActionPatch(action.id, action.user_id, { status: "proposed", decided_at: null });
-}
-
-/**
- * "Go": hand the action to an agent. Stores the brief and moves it to
- * dispatched. Manual dispatch for now — spec.md §9 automates it.
- */
-export async function dispatchAction(
-  qc: QueryClient,
-  action: Action,
-  brief: string,
-): Promise<void> {
-  // queue_position lands it at the end of the Queued lane on the Work board.
-  await apply(qc, action, {
-    status: "dispatched",
-    brief,
-    dispatched_at: now(),
-    queue_position: endOfQueue(),
-  });
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  // PN-4.3: the bridge picks it up (BR-1); nothing to paste anywhere.
-  toast("Reeve has it", { description: "You'll be told when it's done." });
-}
-
-/**
- * The whole "Go" flow, so the card and the detail sheet share it (AQ-4):
- * respect a Tweaked brief, otherwise assemble one from the capture; then
- * dispatch to the Work board, where the bridge claims it (BR-1). The clipboard
- * copy that used to happen here was the manual handoff the bridge replaced;
- * `copyBrief` below keeps it one tap away for the day the bridge is down.
- *
- * Second edition: a reeve-domain action is no exception. The bridge drafts in
- * the repo on a local branch (docs/spec.md §2); the GitHub loop is retired.
- */
-export async function goAction(qc: QueryClient, action: Action, area?: Area): Promise<void> {
-  let brief = action.brief?.trim() ?? "";
-  if (!brief) {
-    const [captureRes, commitmentsRes] = await Promise.all([
-      supabase.from("captures").select("raw_text").eq("id", action.capture_id).maybeSingle(),
-      supabase.from("commitments").select("text, due_text").eq("capture_id", action.capture_id),
-    ]);
-    brief = assembleBrief({
-      actionTitle: action.title,
-      rawText: (captureRes.data?.raw_text as string) ?? "",
-      areaLabel: area?.label,
-      areaHint: area?.classifier_hint,
-      commitments: (commitmentsRes.data as { text: string; due_text: string | null }[]) ?? [],
-    });
+/** Tweak: the title and domain of a proposal, in place. Online by nature. */
+export async function tweakAction(qc: QueryClient, m: ActionMessage, patch: { title?: string; area_id?: string | null }): Promise<void> {
+  const { error } = await supabase.from("actions").update(patch).eq("id", m.actionId);
+  if (error) {
+    toast.error("Couldn't save that");
+    return;
   }
-  await dispatchAction(qc, action, brief);
+  void qc.invalidateQueries({ queryKey: ["thread"] });
 }
 
-/** PN-4.3: the manual handoff, kept behind an explicit tap. */
-export async function copyBrief(action: Action): Promise<void> {
-  const brief = action.brief?.trim();
+/** The manual handoff, kept behind an explicit tap for the day the bridge is down. */
+export async function copyBrief(m: ActionMessage): Promise<void> {
+  const brief = m.brief?.trim();
   if (!brief) {
-    toast("No brief yet", { description: "Reeve assembles one when you say Go." });
+    toast("No brief yet", { description: "Reeve assembles one when you hand it over." });
     return;
   }
   try {
     await navigator.clipboard.writeText(brief);
     toast("Brief copied");
   } catch {
-    toast.error("Couldn't copy", { description: "The brief is still on the card." });
+    toast.error("Couldn't copy");
   }
-}
-
-// --- the "Do next" nudge (AQ-3) ------------------------------------------
-
-/** Pin to the top of the stream, or unpin. The only manual lever on order. */
-export async function togglePin(qc: QueryClient, action: Action): Promise<void> {
-  const pinned_at = action.pinned_at ? null : now();
-  // Not an optimistic remove — a pinned action stays in the stream, it just
-  // moves. Patch it in place so it re-orders at once, then queue the write.
-  patchInStream(qc, action.id, { pinned_at });
-  await enqueueActionPatch(action.id, action.user_id, { pinned_at });
-}
-
-// --- review → … ----------------------------------------------------------
-
-/** Approve the agent's result. Lands in the Work board's Done lane. */
-export async function approveAction(qc: QueryClient, action: Action): Promise<void> {
-  await apply(qc, action, { status: "done", decided_at: now() });
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Approved");
-}
-
-/**
- * Send it back for another pass. Returns to the Queued lane with Chris's note
- * (BR-5). The previous result is deliberately kept: the bridge reads it and the
- * note together as "Previous attempt" / "Chris said", and overwrites it when
- * the second pass returns. Nothing shows a result while an action is queued.
- */
-export async function redoAction(
-  qc: QueryClient,
-  action: Action,
-  feedback?: string,
-): Promise<void> {
-  await apply(qc, action, {
-    status: "dispatched",
-    feedback: feedback?.trim() || null,
-    assignee: null,
-    started_at: null,
-    // Re-dispatched now: the pick-up order and the "not picked up" alert
-    // (PN-7.2) both read dispatched_at.
-    dispatched_at: now(),
-    queue_position: endOfQueue(),
-  });
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Sent back for another pass");
-}
-
-// --- the Work board (AQ-7) -----------------------------------------------
-//
-// Reorder the Queued lane, pick a card up (assign an assistant), and complete
-// it. All manual for v1; spec.md §9's real agents populate the assistant and
-// drive these transitions themselves later.
-
-/** Drag within Queued: write the new order. Optimistic against the board cache. */
-export async function reorderQueued(
-  qc: QueryClient,
-  action: Action,
-  queue_position: number,
-): Promise<void> {
-  qc.setQueryData<Action[]>(WORK_QK, (old) =>
-    old?.map((a) => (a.id === action.id ? { ...a, queue_position } : a)),
-  );
-  const { error } = await supabase
-    .from("actions")
-    .update({ queue_position })
-    .eq("id", action.id);
-  if (error) {
-    void qc.invalidateQueries({ queryKey: WORK_QK });
-    toast.error("Couldn't reorder that");
-  }
-}
-
-/** Pick a card up: move it to Working and record who is on it. */
-export async function startWorking(
-  qc: QueryClient,
-  action: Action,
-  assignee: string,
-): Promise<void> {
-  const patch = { status: "working" as const, assignee: assignee.trim() || null, started_at: now() };
-  qc.setQueryData<Action[]>(WORK_QK, (old) =>
-    old?.map((a) => (a.id === action.id ? { ...a, ...patch } : a)),
-  );
-  const { error } = await supabase.from("actions").update(patch).eq("id", action.id);
-  if (error) {
-    void qc.invalidateQueries({ queryKey: WORK_QK });
-    toast.error("Couldn't start that");
-    return;
-  }
-  toast("Working", assignee.trim() ? { description: `With ${assignee.trim()}` } : undefined);
-}
-
-/** Change who a working card is assigned to. */
-export async function assignAction(
-  qc: QueryClient,
-  action: Action,
-  assignee: string,
-): Promise<void> {
-  const value = assignee.trim() || null;
-  qc.setQueryData<Action[]>(WORK_QK, (old) =>
-    old?.map((a) => (a.id === action.id ? { ...a, assignee: value } : a)),
-  );
-  const { error } = await supabase.from("actions").update({ assignee: value }).eq("id", action.id);
-  if (error) {
-    void qc.invalidateQueries({ queryKey: WORK_QK });
-    toast.error("Couldn't reassign that");
-  }
-}
-
-// The manual result loop (AQ-5): until real agents return work, Chris drives
-// the return — a working card either comes back for approval or is marked done.
-
-/** An agent handed something back: re-enter "Needs you" as an Approve/Redo. */
-export async function markResultReady(
-  qc: QueryClient,
-  action: Action,
-  result: string,
-): Promise<void> {
-  const { error } = await supabase
-    .from("actions")
-    .update({ status: "review", result: result.trim() || null })
-    .eq("id", action.id);
-  if (error) {
-    toast.error("Couldn't save that");
-    return;
-  }
-  void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Saved for review");
-}
-
-/** Done without a review step. Stays on the board, in Done. */
-export async function markDone(qc: QueryClient, action: Action): Promise<void> {
-  const { error } = await supabase
-    .from("actions")
-    .update({ status: "done", decided_at: now() })
-    .eq("id", action.id);
-  if (error) {
-    toast.error("Couldn't do that");
-    return;
-  }
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Marked done");
 }
