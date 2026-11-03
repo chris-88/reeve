@@ -11,7 +11,7 @@ import {
  * WP-F5: the one place a push is sent from.
  *
  * A function rather than a library import, so that every sender — the daily
- * brief, the change-request webhook, whatever Stage 6 brings — goes through
+ * brief, the bridge, the due reminder — goes through
  * one implementation. Two call sites assembling VAPID headers two different
  * ways is how one of them quietly stops working, and a push that silently
  * stops arriving is indistinguishable from having nothing to say.

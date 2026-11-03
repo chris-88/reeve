@@ -3,7 +3,7 @@
  *
  * Assembled from the action title, the capture's own words, the area and its
  * context, and any commitments — everything an agent needs to act without the
- * app. Kept close in shape to what a change-request handoff produces, so that
+ * app. Kept close in shape to what a written handoff produces, so that
  * automating dispatch later (spec.md §9) is wiring, not redesign.
  */
 export function assembleBrief(input: {

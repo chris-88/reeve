@@ -8,5 +8,3 @@ export * from "./due.ts";
 export * from "./sentry.ts";
 export * from "./budget.ts";
 export * from "./brief-prompt.ts";
-export * from "./change-request-prompt.ts";
-export * from "./github.ts";

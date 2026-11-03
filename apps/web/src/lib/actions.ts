@@ -1,13 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Action, Area } from "@reeve/shared";
-import { REEVE_AREA_ID } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { assembleBrief } from "@/lib/brief";
 import { enqueueActionPatch, type ActionPatch } from "@/lib/outbox";
 
-/** The change-request review list, shared with NeedsYou. */
-const CHANGE_REQUESTS_QK = ["change_requests"] as const;
 
 /**
  * The decisions the "Needs you" stream makes on an action (AQ-2/AQ-4/AQ-5).
@@ -148,14 +145,10 @@ export async function dispatchAction(
  * copy that used to happen here was the manual handoff the bridge replaced;
  * `copyBrief` below keeps it one tap away for the day the bridge is down.
  *
- * A reeve-area action is the exception: it routes through the *existing*
- * change-request pipeline (decided with Chris), so building Reeve keeps its one
- * loop — draft → review → file → @claude → PR → shipped → push — instead of a
- * generic Work-board handoff to an assistant that cannot open a PR.
+ * Second edition: a reeve-domain action is no exception. The bridge drafts in
+ * the repo on a local branch (docs/spec.md §2); the GitHub loop is retired.
  */
 export async function goAction(qc: QueryClient, action: Action, area?: Area): Promise<void> {
-  if (action.area_id === REEVE_AREA_ID) return goReeveAction(qc, action);
-
   let brief = action.brief?.trim() ?? "";
   if (!brief) {
     const [captureRes, commitmentsRes] = await Promise.all([
@@ -186,51 +179,6 @@ export async function copyBrief(action: Action): Promise<void> {
   } catch {
     toast.error("Couldn't copy", { description: "The brief is still on the card." });
   }
-}
-
-/**
- * Go on a reeve-area action: hand it to the change-request pipeline rather than
- * the Work board.
- *
- * The action's job — surface an app idea and let you approve acting on it — is
- * fulfilled the moment it becomes a change request, so it is marked done (it
- * ages out of the Work board's Done lane); the change request is the living
- * artifact, reviewed back in "Needs you". Online by nature — the draft is a
- * model call — so the writes are direct and a failed draft reverts cleanly.
- *
- * NOTE (flagged for Chris): whether a reeve Go should also appear on the Work
- * board, or only as its change request, is a product call taken here as
- * "change request only". Easy to change if living with it says otherwise.
- */
-async function goReeveAction(qc: QueryClient, action: Action): Promise<void> {
-  removeFromStream(qc, action.id);
-  const done = await supabase
-    .from("actions")
-    .update({ status: "done", decided_at: now() })
-    .eq("id", action.id);
-  if (done.error) {
-    void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-    toast.error("Couldn't do that", { description: "Nothing changed." });
-    return;
-  }
-
-  const { error } = await supabase.functions.invoke("draft-change-request", {
-    body: { capture_ids: [action.capture_id] },
-  });
-
-  if (error) {
-    await supabase
-      .from("actions")
-      .update({ status: "proposed", decided_at: null })
-      .eq("id", action.id);
-    void qc.invalidateQueries({ queryKey: ACTIONS_QK });
-    toast.error("Couldn't draft that change", { description: "Put back for you to try again." });
-    return;
-  }
-
-  void qc.invalidateQueries({ queryKey: CHANGE_REQUESTS_QK });
-  void qc.invalidateQueries({ queryKey: WORK_QK });
-  toast("Drafted a change", { description: "Review it in Needs you." });
 }
 
 // --- the "Do next" nudge (AQ-3) ------------------------------------------

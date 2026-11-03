@@ -48,8 +48,6 @@ const SECRETS = [
   "ANTHROPIC_API_KEY",
   "SENTRY_AUTH_TOKEN",
   "VAPID_PRIVATE_KEY",
-  "GITHUB_ISSUES_TOKEN",
-  "GITHUB_WEBHOOK_SECRET",
 ];
 
 // Patterns that indicate a leaked credential even if it isn't in our .env.local

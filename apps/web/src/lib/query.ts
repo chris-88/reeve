@@ -55,7 +55,6 @@ export const shouldPersistQuery = (key: readonly unknown[]): boolean =>
   key[0] === "captures" ||
   key[0] === "areas" ||
   key[0] === "commitments" ||
-  key[0] === "change_requests" ||
   // The "Needs you" stream is the middle of the app; it has to render its
   // pending decisions with no signal, the same reason "commitments" is here.
   key[0] === "actions";

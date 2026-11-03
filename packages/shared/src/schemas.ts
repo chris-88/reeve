@@ -13,10 +13,9 @@ export type CaptureSource = z.infer<typeof CaptureSource>;
 export const UNSORTED_AREA_ID = "unsorted";
 
 /**
- * The area for thoughts about building Reeve itself. An action in this area
- * routes through the existing change-request pipeline (AQ-4) — draft → file →
- * ship — rather than a generic handoff. The id is the seed's own, and the
- * `draft-change-request` function selects on it.
+ * The domain for thoughts about building Reeve itself. Second edition: it is a
+ * bridge domain like any other; the run drafts in the repo on a local branch
+ * (docs/spec.md §2). The id is the seed's own.
  */
 export const REEVE_AREA_ID = "reeve";
 
@@ -64,38 +63,6 @@ export type CommitmentStatus = z.infer<typeof CommitmentStatus>;
 export const COMMITMENT_ORIGINS = ["model", "user"] as const;
 export const CommitmentOrigin = z.enum(COMMITMENT_ORIGINS);
 export type CommitmentOrigin = z.infer<typeof CommitmentOrigin>;
-
-export const CHANGE_REQUEST_STATUSES = [
-  "draft",
-  "proposed",
-  "rejected",
-  "filed",
-  "in_progress",
-  "shipped",
-  "abandoned",
-] as const;
-export const ChangeRequestStatus = z.enum(CHANGE_REQUEST_STATUSES);
-export type ChangeRequestStatus = z.infer<typeof ChangeRequestStatus>;
-
-export const ChangeRequest = z.object({
-  id: z.uuid(),
-  user_id: z.uuid(),
-  title: z.string(),
-  body: z.string().nullable(),
-  questions: z.array(z.string()),
-  status: ChangeRequestStatus,
-  auto_handoff: z.boolean(),
-  issue_number: z.number().int().nullable(),
-  issue_url: z.string().nullable(),
-  pr_number: z.number().int().nullable(),
-  pr_url: z.string().nullable(),
-  decided_at: z.string().nullable(),
-  filed_at: z.string().nullable(),
-  shipped_at: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-export type ChangeRequest = z.infer<typeof ChangeRequest>;
 
 export const Commitment = z.object({
   id: z.uuid(),

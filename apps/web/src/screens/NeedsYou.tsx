@@ -7,21 +7,19 @@ import {
   Check,
   CheckCheck,
   CloudOff,
-  GitPullRequest,
   Bell,
   Loader2,
   Pin,
   Search,
   X,
 } from "lucide-react";
-import type { Action, Area, Capture, ChangeRequest } from "@reeve/shared";
+import type { Action, Area, Capture } from "@reeve/shared";
 import { NEEDS_YOU_STATUSES } from "@reeve/shared";
 import { supabase } from "@/lib/supabase";
 import { useAreas } from "@/lib/areas";
 import {
   captureOps,
   pendingActionPatch,
-  pendingChangeRequestPatch,
   subscribe,
   type PendingOp,
 } from "@/lib/outbox";
@@ -34,7 +32,6 @@ import { useRealtimeChannel } from "@/lib/useRealtimeChannel";
 import CaptureDetail from "@/components/CaptureDetail";
 import CaptureSearch from "@/components/CaptureSearch";
 import ActionDetail from "@/components/ActionDetail";
-import ChangeRequestDetail from "@/components/ChangeRequestDetail";
 
 /**
  * AQ-2: the "Needs you" stream — the middle of the app, replacing the Inbox tab.
@@ -57,11 +54,10 @@ export default function NeedsYou({
   const online = useOnline();
   const [openAction, setOpenAction] = useState<Action | null>(null);
   const [openCapture, setOpenCapture] = useState<Capture | null>(null);
-  const [openCR, setOpenCR] = useState<ChangeRequest | null>(null);
   const [searching, setSearching] = useState(false);
   // PN-4.1: offered once after a Go, when it can succeed; rests a week on Not now.
   const [askingPush, setAskingPush] = useState(false);
-  // The whole outbox, so change-request and action patches can be overlaid too;
+  // The whole outbox, so action patches can be overlaid too;
   // the unsent-capture strip derives its own view.
   const [pending, setPending] = useState<PendingOp[]>([]);
   useEffect(() => subscribe(setPending), []);
@@ -119,30 +115,7 @@ export default function NeedsYou({
     },
   });
 
-  // Change requests awaiting review re-home the reeve review UI into the stream
-  // (AQ-4): a reeve action's Go drafts one, and it appears here. A pending
-  // decision is overlaid so an approve/reject taken offline leaves the list at
-  // once, matching the old chip's behaviour.
-  const { data: crRows = [] } = useQuery({
-    queryKey: ["change_requests"],
-    queryFn: async (): Promise<ChangeRequest[]> => {
-      const { data, error } = await supabase
-        .from("change_requests")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-  const reviewableCRs = useMemo(
-    () =>
-      crRows
-        .map((cr) => ({ ...cr, ...pendingChangeRequestPatch(pending, cr.id) }) as ChangeRequest)
-        .filter((cr) => (cr.status === "draft" || cr.status === "proposed") && !cr.decided_at),
-    [crRows, pending],
-  );
-
-  // One resilient realtime channel (F9) for the three tables this screen reads.
+  // One resilient realtime channel (F9) for the two tables this screen reads.
   useRealtimeChannel({
     channel: "needs-you-changes",
     userId,
@@ -158,15 +131,10 @@ export default function NeedsYou({
         table: "captures",
         onChange: () => void qc.invalidateQueries({ queryKey: ["inflight-captures"] }),
       },
-      {
-        table: "change_requests",
-        onChange: () => void qc.invalidateQueries({ queryKey: ["change_requests"] }),
-      },
     ],
     onReconnect: () => {
       void qc.invalidateQueries({ queryKey: ACTIONS_QK });
       void qc.invalidateQueries({ queryKey: ["inflight-captures"] });
-      void qc.invalidateQueries({ queryKey: ["change_requests"] });
     },
   });
 
@@ -216,8 +184,7 @@ export default function NeedsYou({
   const caughtUp =
     ordered.length === 0 &&
     inflight.length === 0 &&
-    pendingCaptures.length === 0 &&
-    reviewableCRs.length === 0;
+    pendingCaptures.length === 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -295,31 +262,6 @@ export default function NeedsYou({
           </button>
         ))}
 
-        {/* Change requests awaiting review (AQ-4 re-home). */}
-        {reviewableCRs.length > 0 && (
-          <ul className="mb-2 space-y-2">
-            {reviewableCRs.map((cr) => (
-              <li key={cr.id}>
-                <button
-                  type="button"
-                  onClick={() => setOpenCR(cr)}
-                  className="border-border/60 bg-card/60 hover:bg-card flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors"
-                >
-                  <GitPullRequest className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-serif text-[1.02rem] leading-snug">{cr.title}</span>
-                    <span className="text-muted-dim text-xs">
-                      {cr.status === "draft" ? "Drafted — tap to review" : "Ready to file — tap to review"}
-                      {cr.questions.length > 0 &&
-                        ` · ${cr.questions.length} question${cr.questions.length === 1 ? "" : "s"}`}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
         <ul className="mt-1">
           {ordered.map((a) => (
             <ActionRow
@@ -366,13 +308,6 @@ export default function NeedsYou({
           areas={areas}
           onClose={() => setOpenCapture(null)}
           onCorrected={() => void qc.invalidateQueries({ queryKey: ["inflight-captures"] })}
-        />
-      )}
-      {openCR && (
-        <ChangeRequestDetail
-          changeRequest={reviewableCRs.find((c) => c.id === openCR.id) ?? openCR}
-          userId={userId}
-          onClose={() => setOpenCR(null)}
         />
       )}
       {searching && <CaptureSearch areas={areas} onClose={() => setSearching(false)} />}
