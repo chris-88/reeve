@@ -62,8 +62,15 @@ When in doubt, remove it and wait for the friction.
                                                    └─▶ Redo with a note ─▶ back to the bridge
 ```
 
-- **Capture** is text (typed or dictated) from the phone or desktop. Offline-first, durable.
-- **Triage** classifies the capture to a **domain**, gives it a title and summary, extracts
+- **A message** is text (typed or dictated) from the phone or desktop. Offline-first, durable.
+  Because the app is a conversation, people talk to it: the first thing Reeve decides about a
+  message is its **intent**. An **ask** ("what's on my list", "when is the dentist", "what did
+  I say about the garden") gets an answer in the thread and files nothing. A **tell** (a
+  thought, a task, a promise, a note) goes through triage below. Chris, 2026-11-03, after
+  "what's on my to-do list" was filed as a request: "there might need to be a layer above the
+  whole ticketing system, which handles conversational interaction before defining what a card
+  is going to be or do." This is that layer.
+- **Triage** (for a tell) classifies the message to a **domain**, gives it a title and summary, extracts
   commitments with dates, and proposes zero or more **actions**. A mind dump with several
   intents proposes one `decompose` action, which the bridge runs without being asked and which
   produces the real actions and commitments.
@@ -130,6 +137,8 @@ dev build.
   note rather than an action or a commitment; the bridge polls it (§6 E-9).
 - A `domains` view over `areas where active` with the product's column names, for the app's
   reads. Writes still go to `areas`.
+- `captures.intent` (`ask | tell`, null until triaged), `captures.reply text`,
+  `captures.replied_at`; `action_kind` gains `question` (E-13).
 
 ### Migration
 One migration, `0019_second_edition.sql`, does all of E-1 and E-2, after the export. The
@@ -172,6 +181,7 @@ Cards: proposed, result, failed, decomposed, due. Bubbles: everything else.
 | Message | From | Body | Buttons |
 |---|---|---|---|
 | capture | you | Your text as typed | none (long-press: edit domain or title, archive) |
+| reply | Reeve | The answer to an ask, in prose, from the triage call or a `question` run (E-13) | none |
 | filed | Reeve | "Filed under home: garden plan. I'll remind you Friday." (title, domain, any commitment it created, the vault path as a quiet pointer) | none |
 | proposed | Reeve | "I could book the dentist for next week. Want me to?" (the action's title and one-line brief) | **Hand to Reeve** · **Not now** |
 | working | Reeve | "On it." Updates in place to the result; never a second message | none |
@@ -249,10 +259,22 @@ borders, clean and clear iconography, crisp typography, impressive micro animati
 - **Density.** 16px gutters, 12px between messages of the same author, 20px when the author
   changes, 44px minimum tap targets, safe-area insets respected at the composer.
 
-## 6. Triage
+## 6. Triage and conversation
 
-Unchanged in mechanics (one Claude call, the shared prompt, retries, the stuck alert). Three
+Unchanged in mechanics (one Claude call, the shared prompt, retries, the stuck alert). Four
 changes:
+
+- **E-13 Intent first.** The triage call returns `intent: ask | tell` before anything else, with
+  the last ten thread messages as context so follow-ups ("and the week after?") resolve. For an
+  **ask** the same call answers it when the answer is in the database: open actions by state,
+  commitments and their dates, what was filed where, what Reeve is working on, what happened to
+  a message. The function is given that data as structured context, not the whole table. The
+  answer is stored on the message (`captures.reply`, `replied_at`, `intent`) and the thread
+  shows it as a Reeve bubble under your message, never a card. An ask that needs the vault, a
+  repo, mail or calendar becomes an action of kind `question`, which the bridge runs without
+  Go like `decompose`; its result is posted as a bubble (a `question` result needs no Approve
+  and is `done` on return). While either path runs, the thread shows "thinking…" instead of
+  "filing…". An ask is never triaged into a domain and never creates an action or a commitment.
 
 - **E-7** The prompt describes the twelve domains with the vault's scope line for each. The
   `boi` hint says: route here, extract nothing beyond a title.
@@ -355,7 +377,7 @@ Unchanged from 2026-11-02 and restated:
 | E0 | This document; first edition archived | `docs/` holds `spec.md` and `archive/` only. **Done 2026-11-03.** |
 | E1 | Export change requests to the vault; migration 0019; retire the three functions, their secrets, the GitHub webhook, the `claude.yml` workflow, the Caddy route, the cron job; prune `packages/shared` | Stack healthy, `pnpm test` green, nothing references change requests. **Done 2026-11-03** (see §14). |
 | E2 | The app as the thread (§5): `thread_events` view, new `screens/` and `components/`, libraries moved, light and dark tokens, motion, e2e for the acceptance in §5 | Deployed; Chris's checklist on the phone passes. **Built and deployed 2026-11-03** (see §14); the phone checklist is Chris's. |
-| E3 | Triage E-7, E-8, E-9; bridge filing and `filed_path`; E-12 brief context | A dated capture gets `due_at`; a note capture appears in `+/fleeting/<domain>/` |
+| E3 | Conversation E-13 (intent, inline answers, `question` runs); triage E-7, E-8, E-9; bridge filing and `filed_path`; E-12 brief context; relax the bridge's `reeve` routing to local-branch drafting | "What's on my list" is answered, not filed; a dated capture gets `due_at`; a note capture appears in `+/fleeting/<domain>/` |
 | E4 | Connectors E-11: `gog` setup (Chris's human steps are done except the OAuth client), two accounts, allowlist rules, skills, bridge routing column | A `phibsboro` action reads a thread and leaves a draft in Reeve's mailbox |
 | E5 | Approve acts (§9): send a draft, create an event, push a branch, from the review card | A drafted reply sends on Approve and the card records it |
 
