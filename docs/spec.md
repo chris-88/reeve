@@ -44,9 +44,9 @@ the machine, and the phone is for capture and decisions.
 
 ### Minimal means
 
-Two destinations and a search. No board, no drag, no lanes, no greeting, no settings page with
-more than three switches. Every element on a screen is there because a tap on it changes
-something. When in doubt, remove it and wait for the friction.
+One thread. No tabs, no board, no drag, no lanes, no greeting, no settings page with more than
+three switches. Every element on the screen is there because a tap on it changes something.
+When in doubt, remove it and wait for the friction.
 
 ## 2. The model
 
@@ -135,47 +135,119 @@ dev build.
 One migration, `0019_second_edition.sql`, does all of E-1 and E-2, after the export. The
 seeder and `areas.example.json` are already on the twelve domains.
 
-## 5. The app
+## 5. The app: the thread
 
-### E-3 Two destinations and a search
+Decided with Chris on 2026-11-03 after the first E-3 draft (two destinations and a search)
+still felt over-engineered: "frictionless, an assistant that is only exposing things as
+needed". The app is one screen that reads like a conversation with Reeve.
 
-| Screen | Route | What is on it |
-|---|---|---|
-| **Capture** | `#/` | One text area, one Save. The outbox indicator when something is unsent. Nothing else. |
-| **Today** | `#/today`, `#/today/<actionId>` | Three sections in this order, each hidden when empty: **Needs you** (proposed and review cards), **Reeve has it** (dispatched and working, one line each, no interaction), **Due** (overdue, today, next seven days). |
-| **Library** | `#/library`, `#/library/<captureId>` | Search over captures with the domain chips. Opened from an icon on Today. |
+### E-3 One screen
 
-Settings is a sheet from Today: notifications on or off, sign out, the app version. That is the
-whole surface. The Work board, the Inbox, the change-request views, the drag reorder, the
-greeting, and the separate Due screen are gone.
+| Element | What it is |
+|---|---|
+| **Composer** | Pinned to the bottom. Placeholder "Tell Reeve…". Send on ⏎ or the arrow. Writes through the outbox; a message shows "sending" until it is durable and never disappears on failure. Dictation is the keyboard's. |
+| **Thread** | Everything, newest at the bottom, opened scrolled to the bottom. Older messages load when you scroll up (keyset pagination, the first place it was ever needed). |
+| **Header** | "Reeve", a search icon, a settings icon, and a small count chip ("3 need you") that appears only when something does; tapping it scrolls to the oldest message still waiting. |
 
-### E-4 Cards
-- A **proposed** card: title, domain, one-line summary. Actions: **Hand to Reeve**, **Decline**,
-  **Tweak** (edit title and domain in place). No clipboard.
-- A **review** card: title, the result in its three parts, the files as a short list. Actions:
-  **Approve**, **Redo** with a note field, **Copy brief** in an overflow for the day the bridge
-  is down.
-- A **decompose** review card lists what was created, each a link into Today.
-- A **commitment** row: text, when, the capture it came from. Actions: **Done**, **Drop**.
+There are no tabs, no Today, no Library screen, no Work board, no Due screen. Search filters
+the thread in place (text plus domain chips) and clears with one tap. Settings is a sheet:
+notifications, sign out, version.
 
-### E-5 Carried over as libraries, not rewritten
+### E-4 Messages
+
+Every row is a message from you or from Reeve. Reeve speaks in the first person, in one to
+three short sentences, never with headings. Two visual weights, and only two:
+
+- **Bubbles** for talk: your captures, "filed", "on it", the brief, notices. Plain text, no
+  border, no buttons.
+- **Cards** for decisions (Chris, 2026-11-03: "some cards needed within the thread for
+  approvals"). A card sits in the thread at the same width as a bubble but has a border, a
+  title line, the content you are deciding on (the draft's first lines, the event's when and
+  where, the item list), and one or two buttons. Decisions are taps on the card, never typed
+  replies. Once acted on, a card collapses to one quiet line ("Approved · 08:20", "Sent from
+  my account · 08:21", "Done ✓") and can be expanded again with a tap.
+
+Cards: proposed, result, failed, decomposed, due. Bubbles: everything else.
+
+| Message | From | Body | Buttons |
+|---|---|---|---|
+| capture | you | Your text as typed | none (long-press: edit domain or title, archive) |
+| filed | Reeve | "Filed under home: garden plan. I'll remind you Friday." (title, domain, any commitment it created, the vault path as a quiet pointer) | none |
+| proposed | Reeve | "I could book the dentist for next week. Want me to?" (the action's title and one-line brief) | **Hand to Reeve** · **Not now** |
+| working | Reeve | "On it." Updates in place to the result; never a second message | none |
+| result | Reeve | The run's three parts rewritten as prose: what I did, where, what Approve means. Files as a short list | **Approve** (or **Send it** / **Create it** when Approve acts, §9) · **Redo…** |
+| redo note | you | Your note, shown as your message under the result | none |
+| failed | Reeve | "I couldn't finish this: …" | **Try again** · **Drop it** |
+| decomposed | Reeve | "That was six things. I've proposed four actions and set two reminders:" followed by the items, each a link to its own message | none |
+| due | Reeve | Every morning at 07:30 when something is due or overdue: "Two things today: dentist 15:00, club AGM form." One tick per item | **Done ✓** per item |
+| brief | Reeve | The morning brief, 05:10 | none |
+| paused / stalled | Reeve | "I've hit today's limit; I'll carry on tomorrow." / "I haven't picked this up yet; is the machine awake?" | none |
+
+**Redo…** opens a one-line field inside the result message; sending it posts your note as a
+message and re-queues the action. **Hand to Reeve** turns the proposed message into
+"On it." without a new row.
+
+### E-5 Data: the thread is a view
+
+No new table. `thread_events` is a Postgres view that unions `captures`, `actions` (one event
+per status that matters: proposed, working, review, done/declined), `commitments` (created,
+and the due digest is an `agent_runs` row of step `due`), `briefs`, and the bridge's paused and
+stalled notices, each with `happened_at`, `kind`, `ref_id`, `user_id`, and the columns the
+message needs. The app reads the view with keyset pagination on `(happened_at, id)` and
+subscribes to realtime on the underlying tables, applying payloads to the cache (the old
+F9.4). Mutations go to the real tables through the existing library functions.
+
+### E-3b Carried over as libraries, not rewritten
 `lib/outbox.ts`, `sw.ts` (push, click routing, cache matchers on the configured API origin),
-`lib/push.ts`, `lib/pushAsk.ts`, `lib/badge.ts`, `lib/draft.ts`, `lib/query.ts` (persisted
-cache), `lib/useRealtimeChannel.ts`, `lib/route.ts`, `lib/session.ts`, `lib/env.ts`, and the
-`e2e/offline.spec.ts` and `e2e/capture.spec.ts` suites that prove rule 3. These move as files
-with their tests. Everything under `screens/` and `components/` is written new against E-3 and
-E-4; `components/ui/` keeps whichever shadcn primitives the new screens use and drops the rest.
-`@dnd-kit/*` leaves `package.json`.
+`lib/push.ts`, `lib/pushAsk.ts`, `lib/badge.ts`, `lib/draft.ts`, `lib/query.ts`,
+`lib/useRealtimeChannel.ts`, `lib/route.ts`, `lib/session.ts`, `lib/env.ts`, and the
+`e2e/offline.spec.ts` and `e2e/capture.spec.ts` suites, adapted to the composer. Everything
+under `screens/` and `components/` is written new; `components/ui/` keeps only what the thread
+uses. `@dnd-kit/*` leaves `package.json`.
 
-### E-6 Behaviour that stays
-Deep links from notifications open the card. The icon badge is the Needs you count. The
-permission ask appears after the first Hand to Reeve. A reload keeps the screen. Realtime keeps
-Today live without a refetch storm: the payload is applied to the cache, the one piece of the
-first edition's hardening that was never finished; do it now while the screens are new.
+### E-3c Behaviour that stays
+Routes: `#/` the thread, `#/m/<id>` scrolls to and highlights one message (notification deep
+links use it). The icon badge is the count of messages that need you. The permission ask is a
+Reeve message after your first Hand to Reeve ("Want me to tell you when it's done?" with
+**Yes** · **Not now**). A reload keeps your place.
 
-**Acceptance for the app.** Offline capture of three thoughts, airplane mode off, all three
-filed within fifteen seconds. Hand one to Reeve, approve the result from the notification's
-deep link, badge goes to zero. Lighthouse PWA installable. No `dnd-kit`, no `Inbox.tsx`.
+**Acceptance.** Offline, type three messages in airplane mode; back online, all three file
+within fifteen seconds and their "filed" replies appear without a reload. Hand one to Reeve,
+tap the push, land on the result, Approve, badge goes to zero, the message collapses to its
+one line. Scroll up through a month of history without a spinner longer than a beat.
+
+### E-6 Look and motion
+
+Chris, 2026-11-03: "clean and crisp and premium: light and dark mode with very slimline
+borders, clean and clear iconography, crisp typography, impressive micro animation."
+
+- **Two themes, one token set.** CSS variables in the shadcn shape, `prefers-color-scheme`
+  by default and a three-way switch in settings (system, light, dark). Light is warm paper, not
+  pure white; dark is near-black with the same hue, not grey. One accent colour, used only for
+  the "needs you" bar, the primary button, and the count chip. Everything else is neutral.
+- **Hairlines.** Borders are 1px at low alpha on the foreground colour (`currentColor` at 8%
+  light, 12% dark), 0.5px where the device renders it. No shadows except a 2-stop lift on a
+  card while it is pressed. Radius 14px on cards, 20px on the composer, full on chips.
+- **Type.** Two faces, already in the repo: **Geist** for the interface and your own messages
+  (15px/22px, tracking -0.01em), **Newsreader** for Reeve's words (17px/25px, weight 400), so the
+  assistant has a voice distinct from the chrome. Numbers tabular. Nothing bold above 600. If
+  Newsreader-for-Reeve reads as precious in the first week, the fallback is Geist everywhere
+  with Reeve at 16px; decide after living with it.
+- **Icons.** Lucide, 1.5px stroke, 20px, never filled, never more than one per control.
+  Search, settings, send, check, redo, chevron. That is the set.
+- **Motion** with the `motion` library (React), every duration between 160 and 320ms, springs
+  for movement, ease-out for opacity, all of it off under `prefers-reduced-motion`:
+  - a new message rises 8px and fades in; your own message leaves the composer by sliding up
+    into the thread while the composer clears, no success toast;
+  - "on it" shows three dots breathing; when the result lands the card grows from the bubble
+    (layout animation), never a pop;
+  - pressing a button scales it to 0.97; Approve draws a check (SVG path, 240ms) and the card
+    collapses to its one line with the content fading first and the height following;
+  - the count chip rolls its digit vertically when it changes and fades out at zero;
+  - the thread's scroll-to-bottom on open is instant, a jump never animates;
+  - settings and search slide in as sheets with a backdrop that fades, dismissible by drag.
+- **Density.** 16px gutters, 12px between messages of the same author, 20px when the author
+  changes, 44px minimum tap targets, safe-area insets respected at the composer.
 
 ## 6. Triage
 
@@ -269,7 +341,7 @@ Unchanged from 2026-11-02 and restated:
 - Every result, failure, and decompose pushes with a deep link to the card and a per-action
   tag, so a Redo replaces the first notification.
 - 07:30 Dublin: due reminder, only when something is due or overdue. 05:10 UTC: the morning
-  brief, title "Today", deep link to Today.
+  brief, title "Today", a bubble in the thread.
 - **E-12** The brief's prompt drops every mention of change requests and gains the vault's
   effort trackers (`~/vault/efforts/*.md`, status `doing`) as context, read by the bridge the
   evening before and stored alongside the brief's inputs.
@@ -282,7 +354,7 @@ Unchanged from 2026-11-02 and restated:
 |---|---|---|
 | E0 | This document; first edition archived | `docs/` holds `spec.md` and `archive/` only. **Done 2026-11-03.** |
 | E1 | Export change requests to the vault; migration 0019; retire the three functions, their secrets, the GitHub webhook, the `claude.yml` workflow, the Caddy route, the cron job; prune `packages/shared` | Stack healthy, `pnpm test` green, nothing references change requests. **Done 2026-11-03** (see §14). |
-| E2 | The app: new `screens/` and `components/`, libraries moved, routes, Today, Library, Settings sheet, E-6 realtime cache application; e2e for the acceptance in §5 | Deployed by rolling deploy; Chris's checklist on the phone passes |
+| E2 | The app as the thread (§5): `thread_events` view, new `screens/` and `components/`, libraries moved, light and dark tokens, motion, e2e for the acceptance in §5 | Deployed; Chris's checklist on the phone passes |
 | E3 | Triage E-7, E-8, E-9; bridge filing and `filed_path`; E-12 brief context | A dated capture gets `due_at`; a note capture appears in `+/fleeting/<domain>/` |
 | E4 | Connectors E-11: `gog` setup (Chris's human steps are done except the OAuth client), two accounts, allowlist rules, skills, bridge routing column | A `phibsboro` action reads a thread and leaves a draft in Reeve's mailbox |
 | E5 | Approve acts (§9): send a draft, create an event, push a branch, from the review card | A drafted reply sends on Approve and the card records it |
@@ -302,15 +374,15 @@ Each with the friction that would earn it:
 - Screenshot attachments: the August branch exists; earned when a capture needs an image more
   than once a week. Rebase it then.
 - pgvector or any retrieval beyond trigram search: three recorded misses.
-- Light theme, animation, a notifications history, password reset (single user, sessions
-  live long).
+- A notifications history, password reset (single user, sessions live long).
 - A proposals ledger or second confirmation step: a mistake that a single Approve tap could not have prevented.
 
 ## 13. Decisions taken in this document
 
 - `areas` keeps its table name; the product says "domain".
-- Due merges into Today; the Work board becomes a read-only strip; the Library is a search,
-  not a tab.
+- The app is one thread (decided 2026-11-03, replacing an earlier two-destinations draft): no
+  Today, no Due screen, no Work board, no Library tab; search filters the thread; decisions are
+  cards inside it.
 - Reeve changes itself through local branches and a sentence to the machine session, not
   through GitHub issues.
 - Triage requests filing; the bridge files (the function cannot reach the vault).
