@@ -39,158 +39,40 @@ in a table alongside the specific observation that would earn it.
 
 ---
 
-## Where things stand (2026-11-02)
+## Where things stand (2026-11-03, second edition)
 
-**The bridge is built and running** (`docs/arc-spec-bridge.md`, branch `bridge`
-until merged). Go on an action no longer ends in a copy and paste: a worker on
-the quinn machine (`apps/bridge`, systemd user unit `reeve-bridge.service` from
-`~/dotfiles`) claims the head of the Queued lane as `claude@quinn`, runs the
-brief with `claude -p` in the directory its area maps to, and writes the result
-back as `review` with a push. Redo carries a note (`actions.feedback`); a mind
-dump becomes a `decompose` action (`actions.kind`) the bridge breaks into
-proposed actions without Go. Areas are now the vault's twelve domains (BR-0).
-`systemctl --user stop reeve-bridge` is the pause switch.
+`docs/spec.md` is the spec. Build order is its §11; E0 (the spec) and E1 (schema
+consolidation, the GitHub loop retired) are done. What is live:
 
-**Notifications close the loop** (`docs/arc-spec-notifications.md`, same branch).
-The app has hash routes (`#/needs-you/<id>` opens a card); a push tap lands on
-the card it names; the icon badge is the Needs you count; `notify-due` says
-what is due at 07:30 Dublin; the ask for permission appears once at the first
-Go; the stall alert pushes when the bridge has not claimed a dispatch in 30
-minutes. **Stop `reeve-bridge` before `pnpm test`**: the service claims the test
-suites' dispatched fixtures and runs them for real.
+- **Capture → triage → Needs you → Hand to Reeve → bridge → review → Approve.**
+  The bridge (`apps/bridge`, user unit `reeve-bridge.service` from `~/dotfiles`)
+  claims dispatched actions as `claude@quinn`, runs `claude -p` in the domain's
+  directory, writes the result back as `review`, pushes. Redo carries a note
+  (`actions.feedback`); a mind dump becomes a `decompose` action the bridge
+  breaks into proposed actions. `systemctl --user stop reeve-bridge` is the
+  pause switch. **Stop it before `pnpm test`**: the live suite inserts
+  dispatched fixtures the service would otherwise claim and run for real.
+- **Domains are the vault's twelve** plus `unsorted`, in the `areas` table
+  (the product says "domain"; the `domains` view is the read side). Six
+  first-edition ids remain as inactive rows for old foreign keys.
+- **Notifications close the loop**: hash routes (`#/needs-you/<id>` opens a
+  card), a push tap lands on its card, the icon badge is the Needs you count,
+  `notify-due` at 07:30 Dublin, the ask for permission after the first Go, a
+  stall alert when nothing claims a dispatch in 30 minutes.
+- **Gone in E1 (2026-11-03):** the change-request tables, views, enum, cron
+  job, the `draft-change-request` / `file-change-request` / `github-webhook`
+  functions, the GitHub webhook and the `claude.yml` workflow, the Caddy
+  webhook route, the `GITHUB_*` secrets. Reeve changes itself by drafting on a
+  local branch in a `reeve`-domain run; Chris ships from the machine session.
+- **Still first-edition until E2:** the four-tab nav (Write · Needs you · Work ·
+  Due), the Work board with its drag reorder, the separate Due screen. E2
+  replaces all of `screens/` and `components/` with Capture, Today and the
+  Library (spec §5); the durability libraries under `lib/` and `sw.ts` move
+  across unchanged.
 
-
-Phase 0 is live at `app.chrisquinn.ie`. Capture → triage → filed, offline
-capable, installable. **Phase 1 Stages 0–3 are live on top of it**: areas are
-owner-scoped, commitments are rows with due dates, and there is a third screen
-— Due — showing what is owed and when.
-
-| Document | Status |
-|---|---|
-| `docs/spec.md` | **Second edition (2026-11-03).** The only current spec; tracked in the repo (domains by label only). The first-edition product spec is preserved in the vault |
-| `docs/arc-spec-phase-1.md` | **Complete — Stages 0–5 done and deployed.** Stage 6 described but not approved |
-| `docs/arc-spec-attention-queue.md` | **Merged — AQ-1…AQ-8 plus F9/F10 and four gap-closures.** The middle of the app is "Needs you", with a Work board (AQ-7) and a Library (AQ-8). See its §0 |
-| `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
-| `docs/arc-spec-pwa-hardening.md` | P0 + P1 done, **including F7**. F8.3 skipped, superseded by P1-F13. **F9 and F10 done with the attention queue; F11 outstanding** |
-| `docs/arc-spec-web-push.md` | **Built, deployed, and proven** — WP-F6.3 (a push on the iPhone) confirmed 2026-07-31 |
-| `docs/archive/` | Fully complete specs. Read for reasoning, do not take work from them. See `docs/archive/README.md` |
-
-### The attention queue (built and merged)
-
-The middle of the app was reconsidered mid-build: a kanban board is a workspace
-you *maintain*, so it was replaced by an **attention queue** — "Needs you" — a
-stream of decisions the AI orders and the human only judges. AQ-1…AQ-8 plus the
-F9/F10 hardening and four gap-closures are on `main`. What a later session must
-know:
-
-- **Migrations `0014_actions_and_archive.sql` and `0015_work_board.sql` are
-  applied to the shared DB.** An earlier `0014_tasks_and_archive` (from the
-  abandoned board draft) was applied and then reverted — always
-  `pnpm db:status` before naming a migration.
-- **The triage producer is Broader** (§8 Q1, decided with Chris): the model
-  judges actionability, not a commitment heuristic. Redeploy the `triage`
-  function whenever its code changes; the deployed copy and the frontend must
-  go live together.
-- **Nav is four tabs** — Write · Needs you · Work · Due — plus a Library
-  (`CaptureSearch`) behind a header icon. The Inbox is retired; change-request
-  review is re-homed into "Needs you". `Inbox.tsx`/`ReeveChangeRequests.tsx`
-  remain unmounted and can be deleted once proven.
-- **A flagged product call:** a `reeve` action's Go drafts a change request and
-  marks the action `done` (off the Work board); revisit if it should stay on the
-  board. See `arc-spec-attention-queue.md` §0.
-
-### Phase 1 — what is left
-
-`docs/arc-spec-phase-1.md` §0 carries the full picture: what was verified, five
-defects the spec did not predict, and where the document was wrong or silent.
-Read it before starting anything below.
-
-- **Phase 1 is complete.** The full loop works: a thought about the app is
-  drafted into a GitHub issue (behind the `reeve` Inbox chip), reviewed and
-  approved from the app, filed, and — when its PR merges — marked shipped with
-  a push back. Stages 0–5 are all built and deployed; only Stage 6 (the general
-  approval ledger, §8) remains, and it is described, not approved.
-- **The two hand-only gates are now both proven (2026-07-31).** WP-F6.3 (a push
-  landing on the iPhone) and the real GitHub→webhook→shipped→push delivery were
-  confirmed together: a change request drafted and approved in the app shipped
-  through the reeve loop, its PR merged, and the "shipped" push arrived on
-  Chris's phone. Nothing in the loop is unproven any more.
-- **The coding step is now automated.** `.github/workflows/claude.yml` (Claude
-  Code GitHub Action, `@v1`) opens a PR from any issue that mentions `@claude`,
-  so a reeve change request filed with "hand off to a coding agent" on gets its
-  PR drafted for it. Needs the Claude GitHub App installed and an
-  `ANTHROPIC_API_KEY` repo secret — both set up 2026-07-31 and proven with a
-  test issue. Nothing auto-merges: CI and a human merge still gate it, and Reeve
-  marks shipped only on merge.
-- **The scheduled clustering pass is a first version** — it drafts the
-  unpromoted `reeve` pile as one cluster and skips a pile over eight, recording
-  the miss. Real clustering wants P1-F4 retrieval; §7 sanctions earning it
-  later. The on-demand drafting path (the `reeve` chip's "Draft a change") is
-  complete.
-- **P1-F5 and P1-F6 are done and running.** A brief is dispatched by `pg_cron`
-  at 05:10 UTC to every account with a capture in the last 30 days; the ceiling
-  is checked before the model call and refuses by writing an `agent_runs` row
-  and alerting. Ceilings are function secrets — `REEVE_DAILY_CEILING_USD`,
-  `REEVE_MONTHLY_CEILING_USD` — defaulting to $1/day and $10/30 days.
-- **P1-F13 test isolation is done.** Both suites seed their own taxonomy and
-  tear down unconditionally, CI fails if a `@reeve.test` account accumulates,
-  and `migrate.mjs` now refuses a migration that rewrites existing rows unless
-  you pass `--yes`. Hardening F8.3 required this, was skipped, and is
-  superseded by it.
-- **P1-F12.2 branch protection is applied.** `main` requires the `check` and
-  `e2e` jobs, blocks force-pushes and deletions, and still permits a direct
-  push by an admin — so implementation sessions work as before, and CI failing
-  is now a wall rather than a notification.
-- **Nothing is blocked on a credential any more.** All four are in
-  `.env.local` and, where a function needs them, in Supabase function secrets:
-  VAPID (three values), `GITHUB_ISSUES_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
-  `SENTRY_DSN` / `VITE_SENTRY_DSN` / `SENTRY_AUTH_TOKEN`. Check before
-  assuming one is missing.
-
-Web Push is built, deployed, and **proven** — `docs/arc-spec-web-push.md` §0
-records it. WP-F6.3 (a notification arriving on the installed iPhone PWA) was
-confirmed on 2026-07-31 when a reeve-loop change shipped and its push landed on
-the phone. Delivery is no longer a caveat.
-
-A spec review on 23 July confirmed Stages 0–4 and Web Push are on the correct
-path. It changed one thing: **WP-F3.4 was amended** — a brief headline may name
-the single most pressing item (one sentence, a commitment's action included) on
-the lock screen, chosen for utility on a single-user phone. One code follow-up
-falls out of it, small and behaviour-neutral: the brief function's inline
-comment claiming the headline is "about counts, not a capture's text" is wrong
-and should be corrected to cite WP-F3.4 as amended. See `arc-spec-web-push.md`
-§0 "Amended after review".
-
-The inline permission ask (WP-F4.3) has no home yet either. Its moment is a
-change request being filed, which is P1-F9 — build it there rather than
-inventing an earlier prompt, because **a denied permission is permanent** and
-asking at the wrong moment burns the only chance there is.
-
-### Also outstanding — hardening P2
-
-- **F9 Realtime resilience — done** (merged with the attention-queue
-  gap-closures). One shared hook, `apps/web/src/lib/useRealtimeChannel.ts`:
-  resubscribe on `visibilitychange`, `CHANNEL_ERROR`/`TIMED_OUT` backoff, a
-  `user_id` filter, teardown when backgrounded. NeedsYou and Due use it.
-  **F9.4** (apply the payload to the cache instead of invalidating) is the one
-  part left — the callers still invalidate.
-- **F10 Session lifecycle — done.** Sign-out lives in the settings sheet
-  (`components/Settings.tsx`, reached from Due); it clears the query cache and
-  draft but **never the outbox**, warns on unsent work, and returns to sign-in
-  on a dead refresh token. Password reset (F10.4) is deferred.
-- **F11 Smaller items — outstanding.** `useInfiniteQuery` pagination, code
-  splitting (the bundle is ~1 MB), document the JWT-pattern caveat in
-  `check-bundle.mjs`. NeedsYou, Work, Due and the Library all fetch capped
-  lists, so pagination has several call sites.
-
-**Two things belong to Chris and should not be decided for him:**
-
-1. The three open questions in `docs/archive/ui-spec.md` §9 — particularly *is the
-   Inbox a log or a queue*, which the spec itself notes resolves UI-8, UI-12
-   and the archive question differently depending on the answer.
-2. The real-device check: aeroplane mode, cold launch from the home screen on
-   the iPhone. Point 1 of the hardening spec's §5, and the one criterion no
-   automated test can stand in for — see the WebKit gap below.
+Two things belong to Chris and are not decided for him: the real-device check
+(aeroplane mode, cold launch from the home screen on the iPhone), and anything
+in spec §12.
 
 ---
 
@@ -201,10 +83,10 @@ pnpm dev              # Vite dev server. No service worker here — devOptions.e
 pnpm build            # tsc --noEmit, vite build, then the secret scan
 pnpm typecheck        # workspace-wide, including packages/shared
 pnpm lint             # eslint --max-warnings 0
-pnpm test             # vitest, 158 tests (bridge-live hits the local stack; stop reeve-bridge first)
+pnpm test             # vitest (bridge-live hits the local stack; stop reeve-bridge first)
 VITE_SUPABASE_URL=http://localhost:8001 pnpm test:e2e   # e2e against the local stack when api.chrisquinn.ie does not resolve here
 pnpm test:e2e         # playwright, 7 tests; builds and previews first
-pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0018 applied)
+pnpm db:migrate       # apply supabase/migrations in order. --dry-run, --yes  (0019 applied)
 pnpm --filter @reeve/bridge start      # the bridge in the foreground (normally reeve-bridge.service)
 systemctl --user status reeve-bridge   # is the bridge up; journalctl --user -u reeve-bridge -f
 pnpm db:status        # what is applied, what is pending
@@ -213,18 +95,18 @@ pnpm db:backfill-commitments           # jsonb -> rows. Dry run without --apply
 pnpm triage:report                     # which classifier_hint to edit first
 ```
 
-Seven Edge Functions: `triage`, `send-push`, `brief`, `draft-change-request`,
-`file-change-request`, `github-webhook`, `notify-due` (plus the shared code they import). The
-bridge is not a function: it is a Node worker in `apps/bridge` that talks to
-Postgres directly and calls `send-push` like any other service-key caller.
+Four Edge Functions: `triage`, `send-push`, `brief`, `notify-due` (plus the
+shared code they import). The bridge is not a function: it is a Node worker in
+`apps/bridge` that talks to Postgres directly and calls `send-push` like any
+other service-key caller.
 
-Six cron jobs run in Postgres: `reeve-reap`, `reeve-sweep` and
-`reeve-file-sweep` every minute, `reeve-stuck-alert` every five (stuck captures
-and, since 0018, unclaimed dispatches), `reeve-daily-brief` at 05:10 UTC,
-`reeve-due-reminders` at 06:30 and 07:30 UTC (acts at Dublin hour 7). They read
-their configuration from Vault (`service_role_key`, `triage_function_url`,
-`brief_function_url`, `file_change_request_url`, `notify_due_function_url`,
-`send_push_function_url`, `sentry_dsn`) because the migrations are public.
+Five cron jobs run in Postgres: `reeve-reap` and `reeve-sweep` every minute,
+`reeve-stuck-alert` every five (stuck captures and unclaimed dispatches),
+`reeve-daily-brief` at 05:10 UTC, `reeve-due-reminders` at 06:30 and 07:30 UTC
+(acts at Dublin hour 7). They read their configuration from Vault
+(`service_role_key`, `triage_function_url`, `brief_function_url`,
+`notify_due_function_url`, `send_push_function_url`, `sentry_dsn`) because the
+migrations are public.
 
 `db:seed` refuses to run without an owner. Areas are owner-scoped, and a row
 seeded without one is readable by nobody — a silent failure that looks like a
@@ -242,11 +124,8 @@ record. The self-hosted equivalents:
   then `sudo docker compose up -d --force-recreate functions` in the stack dir.
 - Secrets: `docker-compose.reeve.yml` passes them from the stack's `.env`,
   rendered by `scripts/render-env reeve` from pass (`infra/reeve/*`).
-- `github-webhook` needs no `--no-verify-jwt`: Caddy injects the anon key on
-  that one path so the gateway passes and the function checks the HMAC itself.
 - Vault secrets (`*_function_url`, `service_role_key`, `sentry_dsn`) point at
-  `http://api-gw:8000/functions/v1/...` inside the stack; the five cron jobs are
-  unchanged.
+  `http://api-gw:8000/functions/v1/...` inside the stack.
 - Migrations: `pnpm db:migrate` against `DATABASE_URL` from pass
   (`env/reeve/DATABASE_URL`, now the local pooler as `postgres.reeve`).
 
@@ -257,21 +136,7 @@ export SUPABASE_ACCESS_TOKEN=...        # from .env.local
 supabase functions deploy triage --project-ref <ref>
 supabase functions deploy send-push --project-ref <ref>
 supabase functions deploy brief --project-ref <ref>
-supabase functions deploy draft-change-request --project-ref <ref>
-supabase functions deploy file-change-request --project-ref <ref>
-supabase functions deploy github-webhook --no-verify-jwt --project-ref <ref>
 ```
-
-`github-webhook` is the one function deployed **`--no-verify-jwt`**: the
-Supabase gateway verifies a Supabase JWT by default, which GitHub cannot
-present, so the function does its own HMAC signature check instead. Every other
-function keeps the default JWT gate. The `pull_request` webhook is registered
-on the repo and active; its secret is `GITHUB_WEBHOOK_SECRET`.
-
-`file-change-request` is the only place `GITHUB_ISSUES_TOKEN` exists — a
-fine-grained PAT scoped to `issues: write` on this one repo. It cannot push
-code, verified (a `PUT` to contents 403s). `GITHUB_REPO` is a function secret
-too, defaulting to `chris-88/reeve`.
 
 Function secrets are set the same way. Web Push needs three, not two — signing
 takes the whole keypair, so the *public* key is a function secret as well:
@@ -289,14 +154,13 @@ supabase secrets set --project-ref <ref> \
 
 Each of these was learned the expensive way. They are not visible in the code.
 
-**A public Edge Function must be deployed `--no-verify-jwt`.** Supabase's
+**A public Edge Function needs the gateway's JWT check lifted.** Supabase's
 gateway verifies a Supabase JWT on every function call by default, and returns
-`401 UNAUTHORIZED_NO_AUTH_HEADER` *before the function runs*. A webhook caller
-like GitHub cannot present that JWT — it sends its own HMAC signature instead —
-so `github-webhook` is deployed with `--no-verify-jwt` and verifies the
-signature itself. The failure looks like the function rejecting the request,
-but the function never executed; check the deploy flag before debugging the
-handler.
+`401 UNAUTHORIZED_NO_AUTH_HEADER` *before the function runs*. A caller that
+cannot present one (the retired GitHub webhook was the case) looks like the
+function rejecting the request, but the function never executed. On the
+self-hosted stack the fix was a Caddy route injecting the anon key; hosted, it
+was `--no-verify-jwt`. Check the gateway before debugging the handler.
 
 **The two CI jobs share one free-tier Supabase project, so they must not
 run at once.** `check` and `e2e` both hit the live project — auth, PostgREST,
@@ -477,7 +341,7 @@ syncs that would have worked. The outbox flushes and lets the request fail.
 `useOnline()` exists to tell the user what is happening, which is a different
 job from deciding whether to try.
 
-**Offline state in the Inbox comes from `useOnline()`, not from TanStack
+**Offline state in a list screen comes from `useOnline()`, not from TanStack
 Query's `fetchStatus`.** After a persisted cache restore the query settles to
 `idle` rather than `paused`, so `fetchStatus` read as online and the app fell
 through to "Nothing captured yet" — the exact failure F2 exists to prevent.
@@ -516,7 +380,6 @@ in the bundle. They are stored as repository *variables*, not secrets.
 
 - `pnpm typecheck && pnpm lint && pnpm test` locally.
 - Push once, watch CI, confirm the deploy ran.
-- Update the status section of whichever spec you worked from — including
-  anything you found that the spec did not predict. Both existing specs carry
-  a `## 0. Implementation status`; follow that shape.
+- Update `docs/spec.md`: mark the step in §11 and add one line per deviation
+  to §14, including anything the spec did not predict.
 - Update this file if you learned something that would have saved you time.

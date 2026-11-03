@@ -280,8 +280,8 @@ Unchanged from 2026-11-02 and restated:
 
 | Step | What | Done when |
 |---|---|---|
-| E0 | This document; first edition archived | `docs/` holds `spec.md` and `archive/` only |
-| E1 | Export change requests to the vault; migration 0019; retire the three functions, their secrets, the GitHub webhook, the `claude.yml` workflow, the Caddy route, the cron job; prune `packages/shared` | Stack healthy, `pnpm test` green, nothing references change requests |
+| E0 | This document; first edition archived | `docs/` holds `spec.md` and `archive/` only. **Done 2026-11-03.** |
+| E1 | Export change requests to the vault; migration 0019; retire the three functions, their secrets, the GitHub webhook, the `claude.yml` workflow, the Caddy route, the cron job; prune `packages/shared` | Stack healthy, `pnpm test` green, nothing references change requests. **Done 2026-11-03** (see §14). |
 | E2 | The app: new `screens/` and `components/`, libraries moved, routes, Today, Library, Settings sheet, E-6 realtime cache application; e2e for the acceptance in §5 | Deployed by rolling deploy; Chris's checklist on the phone passes |
 | E3 | Triage E-7, E-8, E-9; bridge filing and `filed_path`; E-12 brief context | A dated capture gets `due_at`; a note capture appears in `+/fleeting/<domain>/` |
 | E4 | Connectors E-11: `gog` setup (Chris's human steps are done except the OAuth client), two accounts, allowlist rules, skills, bridge routing column | A `phibsboro` action reads a thread and leaves a draft in Reeve's mailbox |
@@ -323,4 +323,4 @@ Each with the friction that would earn it:
 
 Written by the implementing sessions, one line each, newest first.
 
-(none yet)
+- E1 (2026-11-03): `triage_corrections` and `triage_rates` were listed as candidates for review and kept, as §4 says; `reeve_capture_share` and `change_request_leadtime` went. The migration counted the vault-secret delete as a rewritten row, so `--yes` was needed (expected). The old Caddy webhook route carried the anon key in the file; it is gone with the route. The `api-landing` container has no admin API, so `caddy reload` fails; recreate the container instead. A stale git worktree at `.worktrees/work-board` (branch `work-board`) predates the second edition and was left alone. The `REEVE_AREA_ID` constant stays exported with a new comment; the reeve-domain Go now dispatches like any other domain, which is what §2 says, but the bridge's reeve routing note still forbids editing application code: E2/E3 should let it draft on a local branch. `ANTHROPIC_API_KEY` as a *repo* secret served only the retired `claude.yml`; removing it is Chris's (`gh secret delete` is blocked for the agent).
