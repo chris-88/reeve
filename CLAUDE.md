@@ -6,6 +6,11 @@ not, and the things that cost hours to learn and are invisible in the code.
 `README.md` is for a human setting the project up. This file is for an agent
 picking the work up cold.
 
+> **Second edition, 2026-11-03.** `docs/spec.md` is the only current spec; every
+> `docs/archive/arc-spec-*.md` is history. Sections below that describe the GitHub
+> change-request loop, the Work board, the Inbox, or hosted Supabase describe the first
+> edition and are being removed step by step in the order `docs/spec.md` §11 gives.
+
 ---
 
 ## Two kinds of session
@@ -16,7 +21,7 @@ by what Chris asks for — not by what seems useful.
 | | **Spec session** | **Implementation session** |
 |---|---|---|
 | Asked for | "review this", "write a spec", "what do you think" | "implement", "build", "fix" |
-| Produces | `docs/arc-spec-*.md` | Code, tests, a deploy |
+| Produces | `docs/spec.md` (or a short spec beside it) | Code, tests, a deploy |
 | Ends with | The spec. **Do not offer to build it.** | Verified green CI and this file updated |
 
 In a spec session, owning the spec means owning its correctness: verify every
@@ -62,7 +67,7 @@ owner-scoped, commitments are rows with due dates, and there is a third screen
 
 | Document | Status |
 |---|---|
-| `docs/spec.md` | Phase 0. Shipped, but still the living reference — where any spec disagrees with it, it wins on everything outside that spec's subject. **Gitignored** — personal content |
+| `docs/spec.md` | **Second edition (2026-11-03).** The only current spec; tracked in the repo (domains by label only). The first-edition product spec is preserved in the vault |
 | `docs/arc-spec-phase-1.md` | **Complete — Stages 0–5 done and deployed.** Stage 6 described but not approved |
 | `docs/arc-spec-attention-queue.md` | **Merged — AQ-1…AQ-8 plus F9/F10 and four gap-closures.** The middle of the app is "Needs you", with a Work board (AQ-7) and a Library (AQ-8). See its §0 |
 | `docs/arc-spec-inbox-board.md` | **Superseded** by the attention queue after a design review — the kanban board was replaced. Do not build from it |
@@ -402,9 +407,10 @@ were free when they were written, not when you read them.
 
 **The repo is public.** It was made public because GitHub Pages on the free
 plan cannot serve a private repo. Personal content was stripped from history
-with an orphan branch and a force-push. `docs/spec.md` and
-`supabase/seed/areas.json` are gitignored and must stay that way. Never commit
-a real area description, a real capture, or anything from `.env.local`.
+with an orphan branch and a force-push. `supabase/seed/areas.json` is
+gitignored and must stay that way; `docs/spec.md` is tracked since the second
+edition and names domains by label only. Never commit a real area description,
+a real capture, or anything from `.env.local`.
 
 **Cron credentials live in Supabase Vault, not in the migration.**
 `0002_triage_guarantee.sql` reads `vault.decrypted_secrets` for

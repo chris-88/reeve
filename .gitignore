@@ -19,8 +19,7 @@ test-results/
 # Supabase CLI local state
 supabase/.temp/
 
-# Personal content. The shape is in the .example files.
-docs/spec.md
+# Personal content. The shape is in the .example file.
 supabase/seed/areas.json
 
 # Obsidian workspace state. docs/ is a vault as well as a directory.
