@@ -29,9 +29,11 @@ the machine, and the phone is for capture and decisions.
 1. **Features are earned by observed need, not anticipated need.** Ship the thin path, live
    with it a fortnight, let the friction decide. This killed audio, kanban, dashboards, and the
    GitHub loop; it stays in force.
-2. **Reeve drafts; Chris approves.** A result is text and local files until the approval
-   ledger exists (§9). No email sent, nothing pushed to a remote, nothing paid, no calendar
-   written, no DNS touched. Approve means "this draft is right".
+2. **Reeve drafts; Chris approves; Approve acts.** A run produces text and local files and
+   stops. The Approve tap is the gate for anything outbound: once a connector exists, Approve
+   on a drafted email sends it from Reeve's account and Approve on a proposed event creates
+   it. Chris governs the consequences (2026-11-03: "move fast and break things... I will
+   govern that"). Nothing outbound happens without a tap; nothing waits for more than one.
 3. **Captures are never dropped.** The outbox, the service worker, and the durability tests
    exist for this one invariant. It is the only part of the first edition carried over
    unchanged and unquestioned.
@@ -236,8 +238,9 @@ and `/calendar` skill in the skills library.
 | `reeve` | reeve.has.mail@gmail.com | `read-send` | full | per §7 table |
 
 Rules, enforced by the allowlist and by the skill's instructions:
-- `gog --readonly` for every read. `gog --account reeve gmail drafts create` is the only write.
-  `gmail send`, `calendar create`, `calendar respond` are denied until §9 exists.
+- `gog --readonly` for every read. During a run, `gog --account reeve gmail drafts create` is
+  the only write; `gmail send`, `calendar create`, `calendar respond` run only from Approve
+  (§9, E5), never from inside a bridge run.
 - Nothing from Chris's mailbox is quoted into the vault or into a draft without his approval;
   results summarise. Mail content never enters the `boi` domain's runs at all.
 - Reeve's own address can later become `reeve@chrisquinn.ie` by Cloudflare Email Routing into
@@ -250,13 +253,15 @@ Health: `gog --no-input --json auth doctor --check` in `box-status`.
 draft the reply in `reeve`'s drafts folder, result says what the draft says and where it is.
 "What's on Thursday" becomes a result listing the day from `chris`'s calendar.
 
-## 9. The approval ledger (next, not now)
+## 9. Approve acts
 
-The step after this edition ships. A `proposals` table: one row per outbound action a run
-wants to take (send this draft, create this event, push this branch), with the exact payload
-and an execution key. Approve in Today executes it once; nothing executes without a row and a
-tap. Until it exists, rule 2 holds absolutely. It is named here so nothing in E-1 to E-12
-forecloses it, and so nobody builds a shortcut around it.
+Approve is the one gate. A review card whose result proposes an outbound step (send this
+draft, create this event, push this branch) says so in its "For you" part, and Approve
+performs it, once, through the same connector the run used. Idempotency is per action: a second
+Approve on the same card does nothing. There is no separate ledger, queue, or second
+confirmation; if a mistake shows one is needed, the write-up after it decides what to add
+(§14). Mistakes on outbound surfaces are Chris's to clean up by his own instruction, and are
+reported plainly, never softened.
 
 ## 10. Notifications and the morning
 
@@ -280,7 +285,7 @@ Unchanged from 2026-11-02 and restated:
 | E2 | The app: new `screens/` and `components/`, libraries moved, routes, Today, Library, Settings sheet, E-6 realtime cache application; e2e for the acceptance in §5 | Deployed by rolling deploy; Chris's checklist on the phone passes |
 | E3 | Triage E-7, E-8, E-9; bridge filing and `filed_path`; E-12 brief context | A dated capture gets `due_at`; a note capture appears in `+/fleeting/<domain>/` |
 | E4 | Connectors E-11: `gog` setup (Chris's human steps are done except the OAuth client), two accounts, allowlist rules, skills, bridge routing column | A `phibsboro` action reads a thread and leaves a draft in Reeve's mailbox |
-| E5 | §9, as its own short spec | |
+| E5 | Approve acts (§9): send a draft, create an event, push a branch, from the review card | A drafted reply sends on Approve and the card records it |
 
 E1 and E2 are separate sessions and separate deploys; E1 is safe on its own because the app's
 current code never reads the dropped tables on a hot path (the change-request screens are
@@ -299,7 +304,7 @@ Each with the friction that would earn it:
 - pgvector or any retrieval beyond trigram search: three recorded misses.
 - Light theme, animation, a notifications history, password reset (single user, sessions
   live long).
-- Executing anything outbound: §9.
+- A proposals ledger or second confirmation step: a mistake that a single Approve tap could not have prevented.
 
 ## 13. Decisions taken in this document
 
