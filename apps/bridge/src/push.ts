@@ -6,9 +6,10 @@ export type Pusher = (userId: string, n: Notification) => Promise<void>;
  * than imported because the worker takes only types from @reeve/shared (see
  * db.ts); tests/bridge.test.ts asserts these match the shared definitions.
  */
-export const actionPath = (actionId: string) => `/#/needs-you/${actionId}`;
+export const actionPath = (actionId: string) => `/#/m/action:${actionId}`;
 export const actionTag = (actionId: string) => `action:${actionId}`;
-export const WORK_PATH = "/#/work";
+export const noticePath = (noticeId: string) => `/#/m/notice:${noticeId}`;
+export const THREAD_PATH = "/#/";
 
 /**
  * BR-3.4 / PN-1.3: what the phone shows when a run comes back. The title is the

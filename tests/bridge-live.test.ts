@@ -229,7 +229,7 @@ describe.skipIf(!LIVE)("bridge live", () => {
           userId,
           title: "Reeve: Fixture",
           body: "What I did: drafted it.",
-          url: `/#/needs-you/${id}`,
+          url: `/#/m/action:${id}`,
           tag: `action:${id}`,
         },
       ]);
@@ -258,7 +258,7 @@ describe.skipIf(!LIVE)("bridge live", () => {
         .single();
       expect(run).toEqual({ ok: false, error: "timed out after 40 minutes" });
       expect(pushes[0]?.body).toMatch(/Could not complete/);
-      expect(pushes[0]?.url).toBe(`/#/needs-you/${id}`);
+      expect(pushes[0]?.url).toBe(`/#/m/action:${id}`);
       expect(await processOnce(deps())).toEqual({ kind: "idle" });
     });
 

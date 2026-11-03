@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { DUE_PATH, dueReminder, dueWindow } from "../../../packages/shared/src/index.ts";
+import { noticePath, THREAD_PATH, dueReminder, dueWindow } from "../../../packages/shared/src/index.ts";
 
 /**
  * PN-3: the morning "due today" line.
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   const db = createClient(supabaseUrl, secretKey);
   const { data, error } = await db
     .from("commitments")
-    .select("text, due_at")
+    .select("id, text, due_at")
     .eq("user_id", userId)
     .eq("status", "open")
     .not("due_at", "is", null)
@@ -43,16 +43,35 @@ Deno.serve(async (req) => {
     .limit(200);
   if (error) return json({ error: error.message }, 500);
 
-  const window = dueWindow((data ?? []) as { text: string; due_at: string }[]);
+  const rows = (data ?? []) as { id: string; text: string; due_at: string }[];
+  const window = dueWindow(rows);
   const reminder = dueReminder(window);
   if (!reminder) return json({ sent: 0, today: 0, overdue: 0 });
+
+  // E-4: the digest is a card in the thread with one tick per item. The notice
+  // carries the item ids; the card reads their current status live.
+  const items = [...window.overdue, ...window.today].map((i) => ({
+    id: rows.find((r) => r.text === i.text && r.due_at === i.due_at)?.id ?? null,
+    text: i.text,
+    due_at: i.due_at,
+  }));
+  const { data: notice } = await db
+    .from("notices")
+    .insert({
+      user_id: userId,
+      kind: "due",
+      body: `${reminder.title}. ${reminder.body}`,
+      meta: { items, today: window.today.length, overdue: window.overdue.length },
+    })
+    .select("id")
+    .single();
 
   const res = await fetch(`${supabaseUrl}/functions/v1/send-push`, {
     method: "POST",
     headers: { "content-type": "application/json", Authorization: `Bearer ${secretKey}` },
     body: JSON.stringify({
       user_id: userId,
-      notification: { ...reminder, url: DUE_PATH, tag: "due" },
+      notification: { ...reminder, url: notice?.id ? noticePath(notice.id) : THREAD_PATH, tag: "due" },
     }),
     signal: AbortSignal.timeout(15_000),
   });

@@ -191,7 +191,7 @@ describe("PN-1.3 / PN-5.1 the push for a result", () => {
     expect(n).toEqual({
       title: "Reeve: Ring the foreman",
       body: "What I did: rang him.",
-      url: `/#/needs-you/${a.id}`,
+      url: `/#/m/action:${a.id}`,
       tag: `action:${a.id}`,
     });
   });

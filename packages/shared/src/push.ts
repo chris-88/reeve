@@ -36,16 +36,26 @@ export type PushNotification = {
 };
 
 /**
- * PN-1.3 / PN-5: the in-app addresses and tags every sender uses, so a tap
- * lands on the right card and a second result replaces the first notification
- * rather than stacking under it. The web app's `lib/route.ts` parses exactly
- * these shapes; `tests/route.test.ts` keeps the two in step.
+ * PN-1.3 / PN-5 / E-3c: the in-app addresses and tags every sender uses, so a
+ * tap lands on the right message and a second result replaces the first
+ * notification rather than stacking under it. The web app's `lib/route.ts`
+ * parses exactly these shapes; `tests/route.test.ts` keeps the two in step.
+ *
+ * Second edition: the app is one thread. A message's id is `<kind>:<uuid>` as
+ * `thread_events` spells it, and `#/m/<id>` scrolls to it.
  */
-export const NEEDS_YOU_PATH = "/#/needs-you";
-export const WORK_PATH = "/#/work";
-export const DUE_PATH = "/#/due";
+export const THREAD_PATH = "/#/";
+export function messagePath(messageId: string): string {
+  return `/#/m/${messageId}`;
+}
+export function actionMessageId(actionId: string): string {
+  return `action:${actionId}`;
+}
 export function actionPath(actionId: string): string {
-  return `${NEEDS_YOU_PATH}/${actionId}`;
+  return messagePath(actionMessageId(actionId));
+}
+export function noticePath(noticeId: string): string {
+  return messagePath(`notice:${noticeId}`);
 }
 export function actionTag(actionId: string): string {
   return `action:${actionId}`;

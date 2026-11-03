@@ -10,7 +10,7 @@ import {
   costUsd,
   DEFAULT_DAILY_CEILING_USD,
   DEFAULT_MONTHLY_CEILING_USD,
-  DUE_PATH,
+  THREAD_PATH,
   recordRefusal,
   reportToSentry,
   TIMEZONE,
@@ -290,8 +290,8 @@ async function notify(
       headers: { "content-type": "application/json", Authorization: `Bearer ${secretKey}` },
       body: JSON.stringify({
         user_id: userId,
-        // PN-1.3: the Due screen's hash address; "/due" was a path the app never read.
-        notification: { title: "Today", body: headline, url: DUE_PATH, tag: "brief" },
+        // E-4: the brief is a bubble in the thread; a tap opens the thread.
+        notification: { title: "Today", body: headline, url: THREAD_PATH, tag: "brief" },
       }),
       signal: AbortSignal.timeout(15_000),
     });
